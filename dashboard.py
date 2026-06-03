@@ -79,8 +79,8 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
 # ───────────────────────── Tab 1: predict a match ─────────────────────────
 with tab1:
     teams = model.teams
-    d_home = teams.index("Spain") if "Spain" in teams else 0
-    d_away = teams.index("Brazil") if "Brazil" in teams else 1
+    d_home = teams.index("France") if "France" in teams else 0
+    d_away = teams.index("England") if "England" in teams else 1
     c1, c2, c3 = st.columns([3, 3, 2])
     home = c1.selectbox("🏠 Home team", teams, index=d_home)
     away = c2.selectbox("✈️ Away team", teams, index=d_away)
@@ -192,8 +192,8 @@ with tab4:
     pick = st.selectbox("Which game?", opts)
     if pick.startswith("✏️"):
         cc1, cc2 = st.columns(2)
-        h = cc1.selectbox("Home team", model.teams, index=(model.teams.index("Spain") if "Spain" in model.teams else 0), key="cust_h")
-        a = cc2.selectbox("Away team", model.teams, index=(model.teams.index("Brazil") if "Brazil" in model.teams else 1), key="cust_a")
+        h = cc1.selectbox("Home team", model.teams, index=(model.teams.index("France") if "France" in model.teams else 0), key="cust_h")
+        a = cc2.selectbox("Away team", model.teams, index=(model.teams.index("England") if "England" in model.teams else 1), key="cust_a")
         cc3, cc4, cc5 = st.columns(3)
         tourn = cc3.text_input("Tournament", value="Friendly")
         neutral = cc4.checkbox("Neutral venue", value=True)
