@@ -12,28 +12,33 @@ import wc
 st.set_page_config(page_title="World Cup 2026 Predictor", page_icon="⚽", layout="wide")
 
 
+# Bump CACHE_VERSION whenever the model interface changes, so every cached entry
+# invalidates automatically on next deploy (avoids stale-pickle bugs on Streamlit Cloud).
+CACHE_VERSION = "v2-confed-elo"
+
+
 @st.cache_resource
-def load_model():
+def load_model(_v=CACHE_VERSION):
     return wc.WorldCupModel()
 
 
 @st.cache_data
-def fixtures():
+def fixtures(_v=CACHE_VERSION):
     return load_model().group_fixtures()
 
 
 @st.cache_data
-def ratings():
+def ratings(_v=CACHE_VERSION):
     return load_model().ratings_table()
 
 
 @st.cache_data
-def run_sim(rating_sd):
+def run_sim(rating_sd, _v=CACHE_VERSION):
     return load_model().simulate_tournament(n_sim=20000, rating_sd=rating_sd)
 
 
 @st.cache_data
-def bracket():
+def bracket(_v=CACHE_VERSION):
     return load_model().project_bracket()
 
 
