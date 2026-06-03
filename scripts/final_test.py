@@ -5,6 +5,13 @@ Models are fit on all pre-test data (<=2023) with the hyperparameters already ch
 validation, then evaluated ONCE on 2024+. No tuning here. Val is shown alongside test purely
 as a no-overfit consistency check.
 """
+
+# --- run from anywhere: make project root importable + cwd ---
+import os, sys
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT); os.chdir(_ROOT)
+# -------------------------------------------------------------
+
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize_scalar

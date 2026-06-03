@@ -14,6 +14,13 @@ Protocol (no test peeking):
     TEST   2024+        ONE confirmation of the chosen value vs k_confed = 0
 Leak-free: every recorded rating is pre-match; offsets accumulate causally.
 """
+
+# --- run from anywhere: make project root importable + cwd ---
+import os, sys
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT); os.chdir(_ROOT)
+# -------------------------------------------------------------
+
 import warnings
 
 import numpy as np

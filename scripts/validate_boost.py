@@ -6,6 +6,13 @@ For each boost we recompute the Elo, then measure across 5 time-folds:
   - |resid|     : mean |cross-confed Elo residual| (does the compression shrink toward 0?)
   - EUR-SAM     : Europe-minus-South-America Elo gap among contenders (does Europe rise toward the market?)
 """
+
+# --- run from anywhere: make project root importable + cwd ---
+import os, sys
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT); os.chdir(_ROOT)
+# -------------------------------------------------------------
+
 import warnings
 
 import numpy as np

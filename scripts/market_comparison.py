@@ -1,4 +1,11 @@
 """Benchmark our title-odds simulation against the bookmaker market (early June 2026)."""
+
+# --- run from anywhere: make project root importable + cwd ---
+import os, sys
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT); os.chdir(_ROOT)
+# -------------------------------------------------------------
+
 import numpy as np
 import pandas as pd
 

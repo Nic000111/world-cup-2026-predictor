@@ -1,4 +1,11 @@
 """Diagnostic: why is test log-loss (~1.8) so much worse than val (~0.89)?"""
+
+# --- run from anywhere: make project root importable + cwd ---
+import os, sys
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT); os.chdir(_ROOT)
+# -------------------------------------------------------------
+
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression

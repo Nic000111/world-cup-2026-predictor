@@ -6,6 +6,13 @@ Both models, side by side:
   - Goals model (Elo-Poisson + Dixon-Coles) -> 1X2 + expected goals + most-likely scoreline
 Writes a readable .txt (table + legend) AND a .csv to ~/Downloads.
 """
+
+# --- run from anywhere: make project root importable + cwd ---
+import os, sys
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT); os.chdir(_ROOT)
+# -------------------------------------------------------------
+
 import os
 from collections import defaultdict
 

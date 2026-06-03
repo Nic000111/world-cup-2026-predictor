@@ -1,6 +1,13 @@
 """Why does our Elo over-rate CONMEBOL/AFC and under-rate UEFA? Test whether the correction
 signal exists in our own data: in cross-confederation games, does each confederation
 over/under-perform its Elo expectation?"""
+
+# --- run from anywhere: make project root importable + cwd ---
+import os, sys
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT); os.chdir(_ROOT)
+# -------------------------------------------------------------
+
 import numpy as np
 import pandas as pd
 

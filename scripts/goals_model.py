@@ -11,6 +11,13 @@ corrects the low-score draw cells. Derives 1X2 + full scoreline matrix.
 
 Development + selection on VALIDATION (2022-23). TEST (2024+) is NOT touched here.
 """
+
+# --- run from anywhere: make project root importable + cwd ---
+import os, sys
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT); os.chdir(_ROOT)
+# -------------------------------------------------------------
+
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize_scalar

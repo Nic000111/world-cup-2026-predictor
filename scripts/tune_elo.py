@@ -4,6 +4,13 @@ Elo's own expected-score log-loss (elo_p_home vs actual home points), then confi
 tuned ratings also help the downstream 3-class logistic. Leak-free: Elo is causal and we
 never touch the 2024+ test slice for *selection*.
 """
+
+# --- run from anywhere: make project root importable + cwd ---
+import os, sys
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT); os.chdir(_ROOT)
+# -------------------------------------------------------------
+
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression

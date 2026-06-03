@@ -7,6 +7,13 @@ knockouts treated as neutral. Group standings use pts -> GD -> goals (head-to-he
 the 8 best third-placed teams are matched to their Round-of-32 slots respecting FIFA's allowed
 sets. Knockout draws resolved by penalties split proportional to win probability.
 """
+
+# --- run from anywhere: make project root importable + cwd ---
+import os, sys
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT); os.chdir(_ROOT)
+# -------------------------------------------------------------
+
 import itertools
 from collections import defaultdict
 

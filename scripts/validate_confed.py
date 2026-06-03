@@ -3,6 +3,13 @@ Does adding a confederation feature to the goals model fix CONMEBOL inflation?
 Train <=2021, evaluate on 2022-23 validation (incl. the 2022 World Cup cross-confed games).
 Test slice (2024+) untouched.
 """
+
+# --- run from anywhere: make project root importable + cwd ---
+import os, sys
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT); os.chdir(_ROOT)
+# -------------------------------------------------------------
+
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize_scalar
