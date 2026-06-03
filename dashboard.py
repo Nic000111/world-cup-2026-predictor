@@ -178,11 +178,14 @@ with tab4:
                "to match), or a custom match for anything else.")
     # Password gate (active only when ENTER_PWD is set as a Streamlit secret — i.e. on the deployed app).
     # Locally with no secrets.toml, the gate is bypassed automatically.
+    # CRITICAL: gate ONLY this tab — do NOT call st.stop(), which would halt the whole script and
+    # leave the Title odds & Bracket tabs blank.
     try:
         expected_pwd = st.secrets.get("ENTER_PWD", "")
     except Exception:
         expected_pwd = ""
-    if expected_pwd and not st.session_state.get("entry_unlocked"):
+    locked = bool(expected_pwd) and not st.session_state.get("entry_unlocked")
+    if locked:
         with st.form("pwd_form", clear_on_submit=False):
             attempt = st.text_input("🔒 Password to enter results", type="password")
             if st.form_submit_button("Unlock"):
@@ -191,47 +194,48 @@ with tab4:
                     st.rerun()
                 else:
                     st.error("Wrong password.")
-        st.stop()
-    gf = fixtures()
-    opts = ["✏️  Custom match (any two teams)"] + [f"{r.date}    {r.home}  vs  {r.away}" for r in gf.itertuples()]
-    pick = st.selectbox("Which game?", opts)
-    if pick.startswith("✏️"):
-        cc1, cc2 = st.columns(2)
-        h = cc1.selectbox("Home team", model.teams, index=(model.teams.index("France") if "France" in model.teams else 0), key="cust_h")
-        a = cc2.selectbox("Away team", model.teams, index=(model.teams.index("England") if "England" in model.teams else 1), key="cust_a")
-        cc3, cc4, cc5 = st.columns(3)
-        tourn = cc3.text_input("Tournament", value="Friendly")
-        neutral = cc4.checkbox("Neutral venue", value=True)
-        d = cc5.date_input("Date", key="cust_d")
     else:
-        row = gf.iloc[opts.index(pick) - 1]
-        h, a, tourn, neutral, d = row.home, row.away, "FIFA World Cup", True, pd.to_datetime(row.date).date()
-        st.info(f"**{h}**  vs  **{a}**   ·   {row.date}")
+        gf = fixtures()
+        opts = ["✏️  Custom match (any two teams)"] + [f"{r.date}    {r.home}  vs  {r.away}" for r in gf.itertuples()]
+        pick = st.selectbox("Which game?", opts)
+        if pick.startswith("✏️"):
+            cc1, cc2 = st.columns(2)
+            h = cc1.selectbox("Home team", model.teams, index=(model.teams.index("France") if "France" in model.teams else 0), key="cust_h")
+            a = cc2.selectbox("Away team", model.teams, index=(model.teams.index("England") if "England" in model.teams else 1), key="cust_a")
+            cc3, cc4, cc5 = st.columns(3)
+            tourn = cc3.text_input("Tournament", value="Friendly")
+            neutral = cc4.checkbox("Neutral venue", value=True)
+            d = cc5.date_input("Date", key="cust_d")
+        else:
+            row = gf.iloc[opts.index(pick) - 1]
+            h, a, tourn, neutral, d = row.home, row.away, "FIFA World Cup", True, pd.to_datetime(row.date).date()
+            st.info(f"**{h}**  vs  **{a}**   ·   {row.date}")
 
-    sc1, sc2 = st.columns(2)
-    hs = sc1.number_input(f"⚽ {h} goals", min_value=0, max_value=30, value=0, step=1, key="hs_in")
-    as_ = sc2.number_input(f"⚽ {a} goals", min_value=0, max_value=30, value=0, step=1, key="as_in")
+        sc1, sc2 = st.columns(2)
+        hs = sc1.number_input(f"⚽ {h} goals", min_value=0, max_value=30, value=0, step=1, key="hs_in")
+        as_ = sc2.number_input(f"⚽ {a} goals", min_value=0, max_value=30, value=0, step=1, key="as_in")
 
-    if st.button("💾 Save result & update ratings", type="primary", disabled=(h == a)):
-        wc.record_result(h, a, hs, as_, str(d), tourn, neutral)
-        st.cache_resource.clear(); st.cache_data.clear()
-        st.session_state["saved_msg"] = f"Saved  {h} {int(hs)}–{int(as_)} {a}.  Ratings updated — predictions now reflect it."
-        st.rerun()
+        if st.button("💾 Save result & update ratings", type="primary", disabled=(h == a)):
+            wc.record_result(h, a, hs, as_, str(d), tourn, neutral)
+            st.cache_resource.clear(); st.cache_data.clear()
+            st.session_state["saved_msg"] = f"Saved  {h} {int(hs)}–{int(as_)} {a}.  Ratings updated — predictions now reflect it."
+            st.rerun()
 
-    if os.path.exists(wc.MANUAL_RESULTS):
-        man = pd.read_csv(wc.MANUAL_RESULTS)
-        if len(man):
-            st.markdown("**Results you've entered:**")
-            st.dataframe(man[["date", "home_team", "away_team", "home_score", "away_score"]].iloc[::-1],
-                         width="stretch", hide_index=True)
-            if st.button("🗑️ Clear all entered results"):
-                os.remove(wc.MANUAL_RESULTS)
-                st.cache_resource.clear(); st.cache_data.clear()
-                st.session_state["saved_msg"] = "Cleared all entered results."
-                st.rerun()
+        if os.path.exists(wc.MANUAL_RESULTS):
+            man = pd.read_csv(wc.MANUAL_RESULTS)
+            if len(man):
+                st.markdown("**Results you've entered:**")
+                st.dataframe(man[["date", "home_team", "away_team", "home_score", "away_score"]].iloc[::-1],
+                             width="stretch", hide_index=True)
+                if st.button("🗑️ Clear all entered results"):
+                    os.remove(wc.MANUAL_RESULTS)
+                    st.cache_resource.clear(); st.cache_data.clear()
+                    st.session_state["saved_msg"] = "Cleared all entered results."
+                    st.rerun()
 
 # ───────────────────────── Tab 5: title odds ─────────────────────────
 with tab5:
+    st.write(f"_build {CACHE_VERSION}_")   # sentinel: if you DON'T see this line, the deploy is stale
     st.subheader("🏆 Title odds — full tournament simulation")
     st.caption("Monte-Carlo of the entire bracket (group stage → final, with the real format & tiebreakers) "
                "from the goals model. Updates automatically as you enter results.")
@@ -254,6 +258,7 @@ with tab5:
 
 # ───────────────────────── Tab 6: projected bracket ─────────────────────────
 with tab6:
+    st.write(f"_build {CACHE_VERSION}_")   # sentinel: if you DON'T see this line, the deploy is stale
     st.subheader("🗺️ Most-likely knockout bracket")
     st.caption("From the current ratings + your entered results: projected group standings → the favourite "
                "advances each round. The % is that favourite's chance in the tie. Re-projects as you enter results.")
