@@ -237,25 +237,35 @@ with tab5:
                "from the goals model. Updates automatically as you enter results.")
     sd = st.slider("Uncertainty — higher spreads the favourites out", 0, 200, 125, 25,
                    help="Per-simulation Elo noise. ~0 over-concentrates the top; ~125 gives a market-like spread.")
-    with st.spinner("Simulating 20,000 tournaments…"):
-        sim = run_sim(sd)
-    st.bar_chart(sim.head(16).set_index("team")["champion"].mul(100), horizontal=True, height=460)
-    show = sim.copy()
-    for c in ["win_group", "advance", "reach_QF", "reach_SF", "final", "champion"]:
-        show[c] = (show[c] * 100).round(1)
-    show = show.rename(columns={"win_group": "win grp %", "advance": "reach R32 %", "reach_QF": "reach QF %",
-                                "reach_SF": "reach SF %", "final": "final %", "champion": "CHAMPION %"})
-    st.dataframe(show.head(32), width="stretch", height=460, hide_index=True)
+    try:
+        with st.spinner("Simulating 20,000 tournaments…"):
+            sim = run_sim(sd)
+        st.bar_chart(sim.head(16).set_index("team")["champion"].mul(100), horizontal=True, height=460)
+        show = sim.copy()
+        for c in ["win_group", "advance", "reach_QF", "reach_SF", "final", "champion"]:
+            show[c] = (show[c] * 100).round(1)
+        show = show.rename(columns={"win_group": "win grp %", "advance": "reach R32 %", "reach_QF": "reach QF %",
+                                    "reach_SF": "reach SF %", "final": "final %", "champion": "CHAMPION %"})
+        st.dataframe(show.head(32), width="stretch", height=460, hide_index=True)
+    except Exception as e:
+        import traceback
+        st.error(f"Title odds failed: **{type(e).__name__}: {e}**")
+        st.code(traceback.format_exc())
 
 # ───────────────────────── Tab 6: projected bracket ─────────────────────────
 with tab6:
     st.subheader("🗺️ Most-likely knockout bracket")
     st.caption("From the current ratings + your entered results: projected group standings → the favourite "
                "advances each round. The % is that favourite's chance in the tie. Re-projects as you enter results.")
-    bk = bracket()
-    st.markdown(render_bracket(bk), unsafe_allow_html=True)
-    la, lb, lw, lp = bk["third"]
-    st.caption(f"🥉 Third-place play-off: **{la}** vs **{lb}** → **{lw}** ({lp * 100:.0f}%)")
+    try:
+        bk = bracket()
+        st.markdown(render_bracket(bk), unsafe_allow_html=True)
+        la, lb, lw, lp = bk["third"]
+        st.caption(f"🥉 Third-place play-off: **{la}** vs **{lb}** → **{lw}** ({lp * 100:.0f}%)")
+    except Exception as e:
+        import traceback
+        st.error(f"Bracket failed: **{type(e).__name__}: {e}**")
+        st.code(traceback.format_exc())
 
 st.divider()
 st.caption("⚠️ A model, not a crystal ball: ~40% of matches (draws + upsets) are near-random, so these "
