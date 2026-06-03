@@ -59,11 +59,11 @@ The cross-continental log-loss improved ~3% after shipping the confederation off
 
 ### Against the sharp betting market
 
-| | ours | de-vigged market |
-|---|---|---|
-| Correlation across all 48 teams | **0.90** | — |
-| Mean absolute divergence | **0.9 percentage points** | — |
-| Continental bias (UEFA, sum of diffs) | **−6.5 pts** (was −12.5 pre-confed-fix) | 0 |
+After de-vigging bookmaker outright odds (~21% overround removed) and comparing our title probabilities to the market across all 48 teams:
+
+- **Correlation: 0.90** — we're not making qualitatively different predictions
+- **Mean absolute divergence: 0.9 percentage points** — average distance from the market price, per team
+- **Continental tilt (UEFA, sum of per-team diffs): −6.5 pts** — we under-rate Europe by this much in aggregate, *down from −12.5 pts before the confederation offset shipped*
 
 The continental tilt against bookmakers roughly halved after the confederation offset. The residual UEFA gap is the **squad-depth premium** — the market knows Europe's bench is deeper than their starting XI suggests, which a results-only model structurally cannot see (we tried squad market value; it failed a leak-free test).
 
