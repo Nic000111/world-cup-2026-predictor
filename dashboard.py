@@ -115,21 +115,27 @@ with tab1:
             index=[f"{home} win", "Draw", f"{away} win"]) * 100
         st.bar_chart(prob, horizontal=True)
 
-        st.markdown("#### Goals & most-likely scorelines")
+        st.markdown("#### Expected goals & most-likely score")
         g1, g2, g3 = st.columns(3)
         g1.metric(f"{home} expected goals", f"{r['xg'][0]:.2f}")
         g2.metric(f"{away} expected goals", f"{r['xg'][1]:.2f}")
-        g3.metric("Most-likely score", r["likely_score"])
+        g3.metric("Most-likely score", r["likely_score"],
+                  help="The favoured side's most likely scoreline — so it always agrees with the win/draw/loss "
+                       "pick above. We show the favourite's likeliest winning score, never a draw next to a winner.")
         sc = pd.DataFrame(r["top_scores"], columns=["score", "probability %"])
         sc["probability %"] = (sc["probability %"] * 100).round(1)
         st.bar_chart(sc.set_index("score"))
-        st.caption("Each exact score is individually unlikely — the rest of the probability spreads "
-                   "across all other scorelines, which is why the single most-likely score is always tidy/low.")
+        st.caption("**Expected goals** and the **score** both point at the favourite — the higher-xG side is "
+                   "always the favoured side. The score shown is that favourite's single most-likely result; the "
+                   "chart is the full spread of exact scores. (Each is individually unlikely, and in a tight game "
+                   "an even **1-1 is often the most common *single* score** — which is exactly why we headline the "
+                   "favourite's likeliest *winning* score instead of the raw most-likely one.)")
 
 # ───────────────────────── Tab 2: 2026 group forecast ─────────────────────────
 with tab2:
     st.subheader("2026 World Cup — group-stage forecast")
-    st.caption("Win/draw/loss from the goals model · expected goals (xG) · most-likely scoreline. "
+    st.caption("Win/draw/loss from the goals model · expected goals (xG) · most-likely scoreline "
+               "(the favourite's likeliest result, so it always matches the W/D/L). "
                "Played games drop off as you enter results.")
     gf = fixtures().copy()
     if len(gf):
@@ -352,7 +358,7 @@ with tab7:
         "- **Expected goals** (e.g. *1.9 – 0.8*): yes. This is a sensible read of which side should score more and "
         "whether a game looks tight or one-sided.\n"
         "- **The exact scoreline**: no — and *no model can be*. Football scores are very random: dozens of results "
-        "are plausible, and even the single most-likely one (usually a tidy *1-0* or *1-1*) only lands a small slice "
+        "are plausible, and even the single most-likely one (a tidy *1-0* or *2-1*) only lands a small slice "
         "of the time — on the order of **1 game in 8**. Read the 'most-likely score' as the *top of a wide spread*, "
         "not a forecast. The trustworthy parts are the over/under feel and which team should lead.")
 

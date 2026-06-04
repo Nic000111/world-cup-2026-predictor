@@ -128,7 +128,12 @@ class WorldCupModel:
         la = float(self._mu([ea], [eh], [0.], [0.])[0])
         M = self._matrix(lh, la)
         gh, gd, ga = float(np.tril(M, -1).sum()), float(np.trace(M)), float(np.triu(M, 1).sum())
-        si, sj = np.unravel_index(M.argmax(), M.shape)
+        # Headline scoreline = most-likely score WITHIN the most-likely outcome, so it can never
+        # contradict the win/draw/loss pick (we never show a 1-1 next to a home-favoured game — we
+        # show the favourite's most-likely *winning* score). Rows = home goals, cols = away goals.
+        ii, jj = np.indices(M.shape)
+        region = [ii > jj, ii == jj, ii < jj][int(np.argmax([gh, gd, ga]))]
+        si, sj = np.unravel_index(np.where(region, M, -1.0).argmax(), M.shape)
         flat = M.ravel()
         top = [(f"{i}-{j}", float(flat[t])) for t in np.argsort(flat)[::-1][:6] for (i, j) in [np.unravel_index(t, M.shape)]]
         return {"home": home, "away": away, "neutral": neutral, "rating": (float(eh), float(ea)),
