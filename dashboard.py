@@ -14,7 +14,7 @@ st.set_page_config(page_title="World Cup 2026 Predictor", page_icon="⚽", layou
 
 # Bump CACHE_VERSION whenever the model interface changes, so every cached entry
 # invalidates automatically on next deploy (avoids stale-pickle bugs on Streamlit Cloud).
-CACHE_VERSION = "v3-glicko"
+CACHE_VERSION = "v4-glicko"
 
 
 @st.cache_resource
@@ -134,15 +134,22 @@ with tab1:
 # ───────────────────────── Tab 2: 2026 group forecast ─────────────────────────
 with tab2:
     st.subheader("2026 World Cup — group-stage forecast")
-    st.caption("Win/draw/loss from the goals model · expected goals (xG) · most-likely scoreline "
-               "(the favourite's likeliest result, so it always matches the W/D/L). "
-               "Played games drop off as you enter results.")
+    st.caption("Each fixture's **prediction** (the most likely outcome) and the **score** that goes with it — "
+               "the favourite's likeliest result, so the two always agree — alongside the underlying **chances** "
+               "(home / draw / away %) and **expected goals (xG)**. Played games drop off as you enter results.")
     gf = fixtures().copy()
     if len(gf):
         for col in ["home_win", "draw", "away_win"]:
             gf[col] = (gf[col] * 100).round(0).astype(int)
+
+        def _verdict(r):
+            return max([(r.home_win, f"{r.home} win"), (r.draw, "Draw"), (r.away_win, f"{r.away} win")],
+                       key=lambda t: t[0])[1]
+        gf["prediction"] = [_verdict(r) for r in gf.itertuples()]
+        gf["score"] = gf["likely_score"]
+        gf["home / draw / away %"] = gf.home_win.astype(str) + " / " + gf.draw.astype(str) + " / " + gf.away_win.astype(str)
         gf["xG"] = gf.xg_home.round(1).astype(str) + " – " + gf.xg_away.round(1).astype(str)
-        st.dataframe(gf[["date", "home", "away", "home_win", "draw", "away_win", "xG", "likely_score"]],
+        st.dataframe(gf[["date", "home", "away", "prediction", "score", "home / draw / away %", "xG"]],
                      width="stretch", height=560, hide_index=True)
     else:
         st.info("All group fixtures have been played (entered as results). 🎉")
