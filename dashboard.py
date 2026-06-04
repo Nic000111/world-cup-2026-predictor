@@ -14,7 +14,7 @@ st.set_page_config(page_title="World Cup 2026 Predictor", page_icon="⚽", layou
 
 # Bump CACHE_VERSION whenever the model interface changes, so every cached entry
 # invalidates automatically on next deploy (avoids stale-pickle bugs on Streamlit Cloud).
-CACHE_VERSION = "v4-glicko"
+CACHE_VERSION = "v5-glicko"
 
 
 @st.cache_resource
@@ -69,6 +69,18 @@ def render_bracket(bk):
     return css + f'<div class="bk">{body}</div>'
 
 
+LEAN_MARGIN = 0.12   # the top outcome must lead the next by >= 12 points to be a confident "X win"; else "Lean X"
+
+
+def outcome_label(home, away, g):
+    """Most-likely match outcome in words; 'Lean X' for a near-toss-up (no confident favourite)."""
+    ranked = sorted([(g["home"], home), (g["draw"], None), (g["away"], away)], key=lambda t: -t[0])
+    (p1, n1), (p2, _) = ranked[0], ranked[1]
+    if n1 is None:
+        return "Draw"
+    return f"{n1} win" if (p1 - p2) >= LEAN_MARGIN else f"Lean {n1}"
+
+
 model = load_model()
 
 st.title("⚽ World Cup 2026 — Match Predictor")
@@ -104,55 +116,57 @@ with tab1:
         st.caption(f"Glicko rating —  {home}: **{r['rating'][0]:.0f}** ±{r['rd'][0]:.0f}   ·   "
                    f"{away}: **{r['rating'][1]:.0f}** ±{r['rd'][1]:.0f}   (± = uncertainty)")
 
-        st.markdown("#### Win / Draw / Loss")
-        m1, m2, m3 = st.columns(3)
-        m1.metric(f"{home} win", f"{r['goals']['home'] * 100:.0f}%")
-        m2.metric("Draw", f"{r['goals']['draw'] * 100:.0f}%")
-        m3.metric(f"{away} win", f"{r['goals']['away'] * 100:.0f}%")
-        prob = pd.DataFrame(
-            {"Glicko-logistic": [r["logistic"]["home"], r["logistic"]["draw"], r["logistic"]["away"]],
-             "Goals model": [r["goals"]["home"], r["goals"]["draw"], r["goals"]["away"]]},
-            index=[f"{home} win", "Draw", f"{away} win"]) * 100
-        st.bar_chart(prob, horizontal=True)
+        g = r["goals"]
+        label = outcome_label(home, away, g)
+        top_pct = max(g["home"], g["draw"], g["away"]) * 100
+        st.markdown(f"#### Most likely outcome:  {label}  ·  {top_pct:.0f}%")
 
-        st.markdown("#### Expected goals & most-likely score")
-        g1, g2, g3 = st.columns(3)
-        g1.metric(f"{home} expected goals", f"{r['xg'][0]:.2f}")
-        g2.metric(f"{away} expected goals", f"{r['xg'][1]:.2f}")
-        g3.metric("Most-likely score", r["likely_score"],
-                  help="The favoured side's most likely scoreline — so it always agrees with the win/draw/loss "
-                       "pick above. We show the favourite's likeliest winning score, never a draw next to a winner.")
-        sc = pd.DataFrame(r["top_scores"], columns=["score", "probability %"])
-        sc["probability %"] = (sc["probability %"] * 100).round(1)
-        st.bar_chart(sc.set_index("score"))
-        st.caption("**Expected goals** and the **score** both point at the favourite — the higher-xG side is "
-                   "always the favoured side. The score shown is that favourite's single most-likely result; the "
-                   "chart is the full spread of exact scores. (Each is individually unlikely, and in a tight game "
-                   "an even **1-1 is often the most common *single* score** — which is exactly why we headline the "
-                   "favourite's likeliest *winning* score instead of the raw most-likely one.)")
+        st.markdown("**Probabilities — all outcomes**")
+
+        def _pc(x):
+            return f"{x * 100:.0f}%"
+        prob = pd.DataFrame(
+            {"Goals model": [_pc(g["home"]), _pc(g["draw"]), _pc(g["away"])],
+             "Glicko-logistic": [_pc(r["logistic"]["home"]), _pc(r["logistic"]["draw"]), _pc(r["logistic"]["away"])]},
+            index=[f"{home} win", "Draw", f"{away} win"])
+        st.table(prob)
+
+        st.markdown("#### Expected goals & goal markets")
+        mk = r.get("markets", {})
+        x1, x2, x3, x4 = st.columns(4)
+        x1.metric(f"{home} expected goals", f"{r['xg'][0]:.2f}")
+        x2.metric(f"{away} expected goals", f"{r['xg'][1]:.2f}")
+        if mk:
+            u, b = mk["under25"], mk["btts_yes"]
+            x3.metric("Goals — O/U 2.5", f"Under {u * 100:.0f}%" if u >= .5 else f"Over {(1 - u) * 100:.0f}%")
+            x4.metric("Both teams to score", f"No {(1 - b) * 100:.0f}%" if b < .5 else f"Yes {b * 100:.0f}%")
+        st.caption("**Expected goals** = the average each side is forecast to score. We deliberately **don't show a "
+                   "single most-likely scoreline** — the likeliest exact score is often a low draw (like 1-1) even "
+                   "when one team is clearly favoured, which misleads more than it helps. The probabilities above "
+                   "and the goal markets here tell the honest story instead.")
 
 # ───────────────────────── Tab 2: 2026 group forecast ─────────────────────────
 with tab2:
     st.subheader("2026 World Cup — group-stage forecast")
-    st.caption("Each fixture's **prediction** (the most likely outcome) and the **score** that goes with it — "
-               "the favourite's likeliest result, so the two always agree — alongside the underlying **chances** "
-               "(home / draw / away %) and **expected goals (xG)**. Played games drop off as you enter results.")
+    st.caption("Each fixture's **prediction** (most likely outcome — *Lean* flags a near-toss-up), the **chances** "
+               "(home / draw / away %), **expected goals**, and the two standard goal markets — **Over/Under 2.5** "
+               "and **both teams to score (BTTS)**. Played games drop off as you enter results.")
     gf = fixtures().copy()
-    if len(gf):
-        for col in ["home_win", "draw", "away_win"]:
-            gf[col] = (gf[col] * 100).round(0).astype(int)
-
-        def _verdict(r):
-            return max([(r.home_win, f"{r.home} win"), (r.draw, "Draw"), (r.away_win, f"{r.away} win")],
-                       key=lambda t: t[0])[1]
-        gf["prediction"] = [_verdict(r) for r in gf.itertuples()]
-        gf["score"] = gf["likely_score"]
-        gf["home / draw / away %"] = gf.home_win.astype(str) + " / " + gf.draw.astype(str) + " / " + gf.away_win.astype(str)
-        gf["xG"] = gf.xg_home.round(1).astype(str) + " – " + gf.xg_away.round(1).astype(str)
-        st.dataframe(gf[["date", "home", "away", "prediction", "score", "home / draw / away %", "xG"]],
-                     width="stretch", height=560, hide_index=True)
-    else:
+    if len(gf) == 0:
         st.info("All group fixtures have been played (entered as results). 🎉")
+    elif "under25" not in gf.columns:
+        st.warning("This forecast was cached by an older build. **Reboot the app** (Manage app ▸ ⋮ ▸ Reboot) to "
+                   "refresh it.")
+    else:
+        gf["prediction"] = [outcome_label(r.home, r.away, {"home": r.home_win, "draw": r.draw, "away": r.away_win})
+                            for r in gf.itertuples()]
+        gf["home / draw / away %"] = gf.apply(
+            lambda r: f"{r.home_win * 100:.0f} / {r.draw * 100:.0f} / {r.away_win * 100:.0f}", axis=1)
+        gf["xG"] = gf.xg_home.round(1).astype(str) + " – " + gf.xg_away.round(1).astype(str)
+        gf["O/U 2.5"] = gf.under25.apply(lambda u: f"Under {u * 100:.0f}%" if u >= .5 else f"Over {(1 - u) * 100:.0f}%")
+        gf["BTTS"] = gf.btts_yes.apply(lambda b: f"No {(1 - b) * 100:.0f}%" if b < .5 else f"Yes {b * 100:.0f}%")
+        st.dataframe(gf[["date", "home", "away", "prediction", "home / draw / away %", "xG", "O/U 2.5", "BTTS"]],
+                     width="stretch", height=560, hide_index=True)
 
 # ───────────────────────── Tab 3: ratings ─────────────────────────
 with tab3:

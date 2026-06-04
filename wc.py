@@ -136,10 +136,13 @@ class WorldCupModel:
         si, sj = np.unravel_index(np.where(region, M, -1.0).argmax(), M.shape)
         flat = M.ravel()
         top = [(f"{i}-{j}", float(flat[t])) for t in np.argsort(flat)[::-1][:6] for (i, j) in [np.unravel_index(t, M.shape)]]
+        under25 = float(M[(ii + jj) <= 2].sum())          # P(total goals <= 2)  -> Under 2.5
+        btts_yes = float(M[(ii >= 1) & (jj >= 1)].sum())  # P(both teams score)
         return {"home": home, "away": away, "neutral": neutral, "rating": (float(eh), float(ea)),
                 "rd": (float(self.team_rd.get(home, rd0)), float(self.team_rd.get(away, rd0))),
                 "logistic": {"home": float(lp[0]), "draw": float(lp[1]), "away": float(lp[2])},
                 "goals": {"home": gh, "draw": gd, "away": ga}, "xg": (lh, la),
+                "markets": {"under25": under25, "btts_yes": btts_yes},
                 "likely_score": f"{si}-{sj}", "top_scores": top, "matrix": M}
 
     def group_fixtures(self):
@@ -149,7 +152,9 @@ class WorldCupModel:
             p = self.predict_match(r.home_team, r.away_team, neutral=bool(r.neutral))
             rows.append(dict(date=r.date.strftime("%Y-%m-%d"), home=r.home_team, away=r.away_team,
                              home_win=p["goals"]["home"], draw=p["goals"]["draw"], away_win=p["goals"]["away"],
-                             xg_home=p["xg"][0], xg_away=p["xg"][1], likely_score=p["likely_score"]))
+                             xg_home=p["xg"][0], xg_away=p["xg"][1],
+                             under25=p["markets"]["under25"], btts_yes=p["markets"]["btts_yes"],
+                             likely_score=p["likely_score"]))
         return pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
 
     def ratings_table(self):
