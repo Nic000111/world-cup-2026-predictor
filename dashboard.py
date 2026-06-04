@@ -100,8 +100,13 @@ with tab1:
         r = model.predict_match(home, away, neutral=neutral)
 
         st.markdown(f"### {home} {'(home) ' if not neutral else ''}vs {away}")
-        st.caption(f"Glicko rating —  {home}: **{r['rating'][0]:.0f}** ±{r['rd'][0]:.0f}   ·   "
-                   f"{away}: **{r['rating'][1]:.0f}** ±{r['rd'][1]:.0f}   (± = uncertainty)")
+        rt = r.get("rating", r.get("elo", (0.0, 0.0)))          # tolerate a stale cached model during redeploys
+        rdv = r.get("rd")
+        if rdv:
+            st.caption(f"Glicko rating —  {home}: **{rt[0]:.0f}** ±{rdv[0]:.0f}   ·   "
+                       f"{away}: **{rt[1]:.0f}** ±{rdv[1]:.0f}   (± = uncertainty)")
+        else:
+            st.caption(f"Rating —  {home}: **{rt[0]:.0f}**   ·   {away}: **{rt[1]:.0f}**")
 
         st.markdown("#### Win / Draw / Loss")
         m1, m2, m3 = st.columns(3)
