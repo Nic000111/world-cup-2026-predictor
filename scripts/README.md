@@ -15,6 +15,7 @@ Standalone analysis, tuning, and diagnostic scripts. Each one bootstraps the pro
 | `market_comparison.py` | De-vigs bookmaker odds, runs the full Monte-Carlo, compares our title odds vs the market team-by-team and confederation-by-confederation. |
 | `diag.py` | Quick Elo sanity check — top ratings, training-row counts, label balance. |
 | `diag_confed_bias.py` | Computes per-confederation cross-confed residuals (the diagnostic that proved we needed the confederation offset). |
+| `diagnostics.py` | Three model sanity checks in one: draw behaviour, headline-score↔W/D/L consistency (0/3540 disagreements), and the joint-mode-vs-outcome illustration (why the likeliest *score* can be a draw while the likeliest *outcome* is a win). |
 
 ## Historical / rejected experiments
 

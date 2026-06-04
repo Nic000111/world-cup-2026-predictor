@@ -335,6 +335,26 @@ class WorldCupModel:
         la, lb = loser[101], loser[102]; out["third"] = (la, lb, *winner(la, lb))
         return out
 
+    def groups(self):
+        """{group letter: [team names]} for the 2026 group stage (derived from fixtures + seeded anchors)."""
+        wc = self.feat[(self.feat.tournament == "FIFA World Cup") & (self.feat.date.dt.year == 2026)]
+        teams = sorted(set(wc.home_team) | set(wc.away_team))
+        adj = defaultdict(set)
+        for _, r in wc.iterrows():
+            adj[r.home_team].add(r.away_team); adj[r.away_team].add(r.home_team)
+        ANCH = {"Mexico": "A", "Canada": "B", "Brazil": "C", "United States": "D", "Germany": "E", "Netherlands": "F",
+                "Belgium": "G", "Spain": "H", "France": "I", "Argentina": "J", "Portugal": "K", "England": "L"}
+        grp, seen = {}, set()
+        for t in teams:
+            if t in seen: continue
+            g = {t} | adj[t]; grp[next(ANCH[x] for x in g if x in ANCH)] = sorted(g); seen |= g
+        return {L: grp[L] for L in sorted(grp)}
+
+    def data_through(self):
+        """Date of the most recent played match in the data — what the ratings reflect."""
+        played = self.feat[self.feat.result.notna()]
+        return played.date.max() if len(played) else None
+
 
 if __name__ == "__main__":
     m = WorldCupModel()

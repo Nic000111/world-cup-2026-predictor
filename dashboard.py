@@ -12,9 +12,8 @@ import wc
 st.set_page_config(page_title="World Cup 2026 Predictor", page_icon="⚽", layout="wide")
 
 
-# Bump CACHE_VERSION whenever the model interface changes, so every cached entry
-# invalidates automatically on next deploy (avoids stale-pickle bugs on Streamlit Cloud).
-CACHE_VERSION = "v5-glicko"
+# Bump CACHE_VERSION whenever the model interface changes, so cached entries invalidate on deploy.
+CACHE_VERSION = "v6-glicko"
 
 
 @st.cache_resource
@@ -40,6 +39,17 @@ def run_sim(rd_scale, _v=CACHE_VERSION):
 @st.cache_data
 def bracket(_v=CACHE_VERSION):
     return load_model().project_bracket()
+
+
+@st.cache_data
+def group_map(_v=CACHE_VERSION):
+    return load_model().groups()
+
+
+@st.cache_data
+def data_through(_v=CACHE_VERSION):
+    d = load_model().data_through()
+    return pd.Timestamp(d).strftime("%d %b %Y") if d is not None else "—"
 
 
 def render_bracket(bk):
@@ -81,22 +91,41 @@ def outcome_label(home, away, g):
     return f"{n1} win" if (p1 - p2) >= LEAN_MARGIN else f"Lean {n1}"
 
 
+COLUMN_LEGEND = (
+    "- **Prediction** — the single most likely result. **“X win”** is a clear favourite; **“Lean X”** means it's "
+    "nearly a toss-up (the favourite leads the next outcome by under ~12 points) — a slight edge, not a confident "
+    "call. You'll never see *“Draw”* here: a draw is rarely any match's single most likely outcome (it tops out "
+    "around 31%), so one team's win almost always edges it.\n"
+    "- **home / draw / away %** — the chance of each result: home wins / draw / away wins. They add up to 100%. "
+    "*(At neutral World Cup venues “home” is just the side listed first — no advantage.)*\n"
+    "- **xG (expected goals)** — the *average* number of goals each side is forecast to score (e.g. 1.8 – 0.8). Shows "
+    "who should score more and whether the game looks tight — it is **not** a predicted scoreline.\n"
+    "- **O/U 2.5** — Over / Under 2.5 total goals: whether the match more likely ends with **3 or more** goals (Over) "
+    "or **2 or fewer** (Under).\n"
+    "- **Double chance** — the favourite's **win-or-draw** probability (e.g. *Mexico or draw 89%*). The 'safer' bet: "
+    "that side just has to avoid losing.")
+
 model = load_model()
 
 st.title("⚽ World Cup 2026 — Match Predictor")
-st.caption("Two models on a self-computed **Glicko** rating (full international history; models trained on 2010+) — "
-           "each team carries a rating **and an uncertainty**, so the model hedges when it's less sure. "
-           "With a **per-confederation adjustment** for cross-continental strength: "
-           "**Glicko-logistic** for win/draw/loss · **Glicko-Poisson + Dixon–Coles** for goals & scorelines. "
-           "Hyperparameters tuned on 2022–23 and validated on a held-out 2024–25 test set; "
-           "deployed model refit on all played games through today.")
+st.caption("Forecasts every 2026 World Cup match from a self-computed **Glicko** rating — each team carries a strength "
+           "**and an uncertainty**, so the model hedges when it knows less. No betting odds, no FIFA rankings — just "
+           "results.")
+with st.expander("How it works (the model in detail)"):
+    st.markdown(
+        "Two models share one engine: a **Glicko-logistic** for win/draw/loss and a **Glicko-Poisson + Dixon–Coles** "
+        "for goals, both built on a self-computed Glicko rating over the full international history (models trained on "
+        "2010+). A **per-confederation adjustment** corrects cross-continental strength. Hyperparameters were tuned on "
+        "2022–23 and validated on a held-out 2024–25 test set; the deployed model is refit on every game played "
+        "through today. The **📈 How good is it?** tab has the held-out accuracy and an honest list of what it can and "
+        "can't do.")
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
-    ["🔮 Predict a match", "📋 Group forecast", "📊 Ratings", "➕ Enter result", "🏆 Title odds", "🗺️ Bracket",
-     "📈 How good is it?"])
+tab_predict, tab_good, tab_groups, tab_ratings, tab_odds, tab_bracket, tab_enter = st.tabs(
+    ["🔮 Predict a match", "📈 How good is it?", "📋 Groups", "📊 Ratings", "🏆 Title odds", "🗺️ Bracket",
+     "➕ Enter result"])
 
-# ───────────────────────── Tab 1: predict a match ─────────────────────────
-with tab1:
+# ───────────────────────── Predict a match ─────────────────────────
+with tab_predict:
     teams = model.teams
     d_home = teams.index("France") if "France" in teams else 0
     d_away = teams.index("England") if "England" in teams else 1
@@ -104,7 +133,6 @@ with tab1:
     home = c1.selectbox("🏠 Home team", teams, index=d_home)
     away = c2.selectbox("✈️ Away team", teams, index=d_away)
     venue = c3.radio("Venue", ["Neutral (e.g. World Cup)", f"{home} at home"], index=0)
-    c3.date_input("Match date (context only — model uses current strength)")
 
     if home == away:
         st.warning("Pick two different teams.")
@@ -160,193 +188,10 @@ with tab1:
             st.bar_chart(pd.DataFrame({"chance %": [v * 100 for v in gvals]}, index=["0", "1", "2", "3", "4", "5+"]))
         st.caption("**Expected goals** = the average each side is forecast to score. We deliberately **don't show a "
                    "single most-likely scoreline** — the likeliest exact score is often a low draw (like 1-1) even "
-                   "when one team is clearly favoured, which misleads more than it helps. The probabilities above "
-                   "and the goal markets here tell the honest story instead.")
+                   "when one team is clearly favoured, which misleads more than it helps.")
 
-# ───────────────────────── Tab 2: 2026 group forecast ─────────────────────────
-with tab2:
-    st.subheader("2026 World Cup — group-stage forecast")
-    st.caption("Each fixture's **prediction** (most likely outcome — *Lean* flags a near-toss-up), the **chances** "
-               "(home / draw / away %), **expected goals**, the **Over/Under 2.5** goals market, and the favourite's "
-               "**double chance** (win-or-draw). Played games drop off as you enter results.")
-    with st.expander("ℹ️ What the columns mean"):
-        st.markdown(
-            "- **Prediction** — the single most likely result. **“X win”** is a clear favourite; **“Lean X”** means "
-            "it's nearly a toss-up (the favourite leads the next outcome by under ~12 points) — a slight edge, not a "
-            "confident call. You'll never see *“Draw”* here: a draw is rarely any match's single most likely outcome "
-            "(it tops out around 31%), so one team's win almost always edges it.\n"
-            "- **home / draw / away %** — the chance of each result: home team wins / draw / away team wins. They add "
-            "up to 100%. *(At neutral World Cup venues “home” is just the side listed first — no advantage.)*\n"
-            "- **xG (expected goals)** — the *average* number of goals each side is forecast to score (e.g. 1.8 – 0.8). "
-            "It shows who should score more and whether the game looks tight or one-sided — it is **not** a predicted "
-            "scoreline. *(An average near 0.9 usually means that team most likely scores 0 or 1.)*\n"
-            "- **O/U 2.5** — Over / Under 2.5 total goals: whether the match more likely ends with **3 or more** goals "
-            "(Over) or **2 or fewer** (Under), with that side's probability.\n"
-            "- **Double chance** — the favourite's **win-or-draw** probability (e.g. *Mexico or draw 89%*). The "
-            "'safer' bet: that side just has to avoid losing, so it's always higher than the plain win %. The team "
-            "shown is the one named in the prediction column.")
-    gf = fixtures().copy()
-    if len(gf) == 0:
-        st.info("All group fixtures have been played (entered as results). 🎉")
-    elif "under25" not in gf.columns:
-        st.warning("This forecast was cached by an older build. **Reboot the app** (Manage app ▸ ⋮ ▸ Reboot) to "
-                   "refresh it.")
-    else:
-        gf["prediction"] = [outcome_label(r.home, r.away, {"home": r.home_win, "draw": r.draw, "away": r.away_win})
-                            for r in gf.itertuples()]
-        gf["home / draw / away %"] = gf.apply(
-            lambda r: f"{r.home_win * 100:.0f} / {r.draw * 100:.0f} / {r.away_win * 100:.0f}", axis=1)
-        gf["xG"] = gf.xg_home.round(1).astype(str) + " – " + gf.xg_away.round(1).astype(str)
-        gf["O/U 2.5"] = gf.under25.apply(lambda u: f"Under {u * 100:.0f}%" if u >= .5 else f"Over {(1 - u) * 100:.0f}%")
-        def _dchance(r):
-            fav, p = (r.home, r.home_win) if r.home_win >= r.away_win else (r.away, r.away_win)
-            return f"{fav} or draw {(p + r.draw) * 100:.0f}%"
-        gf["double chance"] = [_dchance(r) for r in gf.itertuples()]
-        st.dataframe(gf[["date", "home", "away", "prediction", "home / draw / away %", "xG", "O/U 2.5", "double chance"]],
-                     width="stretch", height=560, hide_index=True)
-
-# ───────────────────────── Tab 3: ratings ─────────────────────────
-with tab3:
-    st.subheader("Current Glicko ratings")
-    st.caption("**Rating** = team strength (higher is better). **Uncertainty** = the model's error bar on that "
-               "rating: *how sure it is*. It's low (~60) for teams that play often against known opponents, and "
-               "high for rarely-seen or long-absent sides. It does real work — when a team's uncertainty is high, "
-               "the model **hedges its predictions toward 50/50** instead of overcommitting. Teams too uncertain "
-               "to rate reliably are hidden from this table.")
-    rt = ratings()
-    st.bar_chart(rt.head(25).set_index("team")["rating"], horizontal=True, height=520)
-    st.dataframe(rt, width="stretch", height=420, hide_index=True)
-
-    st.markdown("#### Confederation adjustment")
-    st.caption("Rating points added to each confederation's teams in **cross-continental matches only** — "
-               "learned from inter-confederation results. It cancels within a confederation, so it never "
-               "affects, say, Spain vs France.")
-    off = getattr(model, "confed_offsets", {})
-    if off:
-        offs = pd.Series(off, name="offset").sort_values(ascending=False)
-        offs.index.name = "confederation"
-        st.bar_chart(offs, horizontal=True, height=240)
-    with st.expander("How the confederation adjustment works"):
-        st.markdown(
-            "Only ~14% of international games cross confederations, and each top team plays very few "
-            "(Spain ≈ 11 in 8 years), so the *relative* strength of each confederation is poorly pinned by "
-            "ordinary ratings. We fix that by pooling **every** confederation's cross-continental games into one "
-            "shared offset, then adding it to its teams' ratings.\n\n"
-            "- **What it changed:** cross-continental log-loss improved ~3% on held-out 2024+ data, and our "
-            "continental bias vs the betting market roughly halved (e.g. UEFA −12.5 → −6.5 points).\n"
-            "- **CONMEBOL ≈ UEFA:** our *results* rate the two top confederations as co-leaders — when they "
-            "actually meet it's a coin-flip (98-51-67 since 2010). The market puts Europe clearly ahead, but "
-            "that's a squad-*depth* judgement a results-only model can't see (a squad-value test couldn't add "
-            "it without leaking future form).\n"
-            "- **Within-confederation games are untouched** — the offset cancels, so internal rankings are "
-            "exactly as before.")
-
-# ───────────────────────── Tab 4: enter a result ─────────────────────────
-with tab4:
-    if st.session_state.get("saved_msg"):
-        st.success(st.session_state.pop("saved_msg"))
-    st.subheader("➕ Enter a result — the ratings absorb it and every prediction updates")
-    st.caption("As games are played, record the score here. Pick an upcoming fixture (names guaranteed "
-               "to match), or a custom match for anything else.")
-    # Password gate (active only when ENTER_PWD is set as a Streamlit secret — i.e. on the deployed app).
-    # Locally with no secrets.toml, the gate is bypassed automatically.
-    # CRITICAL: gate ONLY this tab — do NOT call st.stop(), which would halt the whole script and
-    # leave the Title odds & Bracket tabs blank.
-    try:
-        expected_pwd = st.secrets.get("ENTER_PWD", "")
-    except Exception:
-        expected_pwd = ""
-    locked = bool(expected_pwd) and not st.session_state.get("entry_unlocked")
-    if locked:
-        with st.form("pwd_form", clear_on_submit=False):
-            attempt = st.text_input("🔒 Password to enter results", type="password")
-            if st.form_submit_button("Unlock"):
-                if attempt == expected_pwd:
-                    st.session_state["entry_unlocked"] = True
-                    st.rerun()
-                else:
-                    st.error("Wrong password.")
-    else:
-        gf = fixtures()
-        opts = ["✏️  Custom match (any two teams)"] + [f"{r.date}    {r.home}  vs  {r.away}" for r in gf.itertuples()]
-        pick = st.selectbox("Which game?", opts)
-        if pick.startswith("✏️"):
-            cc1, cc2 = st.columns(2)
-            h = cc1.selectbox("Home team", model.teams, index=(model.teams.index("France") if "France" in model.teams else 0), key="cust_h")
-            a = cc2.selectbox("Away team", model.teams, index=(model.teams.index("England") if "England" in model.teams else 1), key="cust_a")
-            cc3, cc4, cc5 = st.columns(3)
-            tourn = cc3.text_input("Tournament", value="Friendly")
-            neutral = cc4.checkbox("Neutral venue", value=True)
-            d = cc5.date_input("Date", key="cust_d")
-        else:
-            row = gf.iloc[opts.index(pick) - 1]
-            h, a, tourn, neutral, d = row.home, row.away, "FIFA World Cup", True, pd.to_datetime(row.date).date()
-            st.info(f"**{h}**  vs  **{a}**   ·   {row.date}")
-
-        sc1, sc2 = st.columns(2)
-        hs = sc1.number_input(f"⚽ {h} goals", min_value=0, max_value=30, value=0, step=1, key="hs_in")
-        as_ = sc2.number_input(f"⚽ {a} goals", min_value=0, max_value=30, value=0, step=1, key="as_in")
-
-        if st.button("💾 Save result & update ratings", type="primary", disabled=(h == a)):
-            wc.record_result(h, a, hs, as_, str(d), tourn, neutral)
-            st.cache_resource.clear(); st.cache_data.clear()
-            st.session_state["saved_msg"] = f"Saved  {h} {int(hs)}–{int(as_)} {a}.  Ratings updated — predictions now reflect it."
-            st.rerun()
-
-        if os.path.exists(wc.MANUAL_RESULTS):
-            man = pd.read_csv(wc.MANUAL_RESULTS)
-            if len(man):
-                st.markdown("**Results you've entered:**")
-                st.dataframe(man[["date", "home_team", "away_team", "home_score", "away_score"]].iloc[::-1],
-                             width="stretch", hide_index=True)
-                if st.button("🗑️ Clear all entered results"):
-                    os.remove(wc.MANUAL_RESULTS)
-                    st.cache_resource.clear(); st.cache_data.clear()
-                    st.session_state["saved_msg"] = "Cleared all entered results."
-                    st.rerun()
-
-# ───────────────────────── Tab 5: title odds ─────────────────────────
-with tab5:
-    st.write(f"_build {CACHE_VERSION}_")   # sentinel: if you DON'T see this line, the deploy is stale
-    st.subheader("🏆 Title odds — full tournament simulation")
-    st.caption("Monte-Carlo of the entire bracket (group stage → final, with the real format & tiebreakers) "
-               "from the goals model. Updates automatically as you enter results.")
-    sd = st.slider("Uncertainty scale — higher spreads the favourites out", 0.0, 3.0, 1.5, 0.25,
-                   help="Multiplies each team's OWN Glicko uncertainty. ~0 over-concentrates the top; "
-                        "~1.5 gives a market-like spread, with data-poor teams spread wider than well-known ones.")
-    try:
-        with st.spinner("Simulating 20,000 tournaments…"):
-            sim = run_sim(sd)
-        st.bar_chart(sim.head(16).set_index("team")["champion"].mul(100), horizontal=True, height=460)
-        show = sim.copy()
-        for c in ["win_group", "advance", "reach_QF", "reach_SF", "final", "champion"]:
-            show[c] = (show[c] * 100).round(1)
-        show = show.rename(columns={"win_group": "win grp %", "advance": "reach R32 %", "reach_QF": "reach QF %",
-                                    "reach_SF": "reach SF %", "final": "final %", "champion": "CHAMPION %"})
-        st.dataframe(show.head(32), width="stretch", height=460, hide_index=True)
-    except Exception as e:
-        import traceback
-        st.error(f"Title odds failed: **{type(e).__name__}: {e}**")
-        st.code(traceback.format_exc())
-
-# ───────────────────────── Tab 6: projected bracket ─────────────────────────
-with tab6:
-    st.write(f"_build {CACHE_VERSION}_")   # sentinel: if you DON'T see this line, the deploy is stale
-    st.subheader("🗺️ Most-likely knockout bracket")
-    st.caption("From the current ratings + your entered results: projected group standings → the favourite "
-               "advances each round. The % is that favourite's chance in the tie. Re-projects as you enter results.")
-    try:
-        bk = bracket()
-        st.markdown(render_bracket(bk), unsafe_allow_html=True)
-        la, lb, lw, lp = bk["third"]
-        st.caption(f"🥉 Third-place play-off: **{la}** vs **{lb}** → **{lw}** ({lp * 100:.0f}%)")
-    except Exception as e:
-        import traceback
-        st.error(f"Bracket failed: **{type(e).__name__}: {e}**")
-        st.code(traceback.format_exc())
-
-# ───────────────────────── Tab 7: how good is it? ─────────────────────────
-with tab7:
+# ───────────────────────── How good is it? ─────────────────────────
+with tab_good:
     st.subheader("📈 How good is it, really?")
     st.caption("An honest report card. The numbers below come from a *held-out* test: the model was trained only "
                "on games up to 2023, then graded on 2024–25 matches it had never seen — so this is real "
@@ -417,13 +262,215 @@ with tab7:
         "whether a game looks tight or one-sided.\n"
         "- **The exact scoreline**: no — and *no model can be*. Football scores are very random: dozens of results "
         "are plausible, and even the single most-likely one (a tidy *1-0* or *2-1*) only lands a small slice "
-        "of the time — on the order of **1 game in 8**. Read the 'most-likely score' as the *top of a wide spread*, "
-        "not a forecast. The trustworthy parts are the over/under feel and which team should lead.")
+        "of the time — on the order of **1 game in 8**. That's why we don't show a single predicted score.")
 
     st.info("**Bottom line:** trust the **probabilities and the favourites** — they're honest and near the limit of "
             "what results alone can reveal. Treat **draws, upsets, and exact scorelines** as genuinely uncertain. "
             "That's not a flaw to fix — it's the honest truth about predicting football.")
 
+# ───────────────────────── Groups (standings + fixtures) ─────────────────────────
+with tab_groups:
+    st.subheader("2026 World Cup — groups")
+    grps = group_map()
+    team2grp = {t: L for L, ts in grps.items() for t in ts}
+
+    st.markdown("#### Predicted group standings")
+    st.caption("Each group ordered by **chance of reaching the knockout stage** (from 20,000 simulations). "
+               "Top 2 of every group qualify automatically; the 8 best third-placed teams also advance.")
+    try:
+        with st.spinner("Simulating the tournament…"):
+            sim = run_sim(1.5).set_index("team")
+        letters = sorted(grps)
+        for base in range(0, len(letters), 3):
+            cols = st.columns(3)
+            for k, L in enumerate(letters[base:base + 3]):
+                with cols[k]:
+                    ordered = sorted(grps[L], key=lambda t: float(sim.loc[t, "advance"]) if t in sim.index else 0.0,
+                                     reverse=True)
+                    df = pd.DataFrame({
+                        "team": ordered,
+                        "win grp": [f"{(sim.loc[t, 'win_group'] if t in sim.index else 0) * 100:.0f}%" for t in ordered],
+                        "advance": [f"{(sim.loc[t, 'advance'] if t in sim.index else 0) * 100:.0f}%" for t in ordered]})
+                    st.markdown(f"**Group {L}**")
+                    st.dataframe(df, hide_index=True, width="stretch")
+    except Exception:
+        st.info("Standings need the tournament simulation — give it a moment, or open the **Title odds** tab once.")
+
+    st.divider()
+    st.markdown("#### Fixtures")
+    st.caption("Each fixture's **prediction** (*Lean* = a near-toss-up), the **chances** (home / draw / away %), "
+               "**expected goals**, the **Over/Under 2.5** market, and the favourite's **double chance**. Played games "
+               "drop off as you enter results.")
+    with st.expander("ℹ️ What the columns mean"):
+        st.markdown(COLUMN_LEGEND)
+    q = st.text_input("🔎 Filter by team", key="grp_filter").strip().lower()
+    gf = fixtures().copy()
+    if len(gf) == 0:
+        st.info("All group fixtures have been played (entered as results). 🎉")
+    elif "under25" not in gf.columns:
+        st.warning("This forecast was cached by an older build. **Reboot the app** (Manage app ▸ ⋮ ▸ Reboot) to "
+                   "refresh it.")
+    else:
+        gf["group"] = gf.home.map(team2grp)
+        gf["prediction"] = [outcome_label(r.home, r.away, {"home": r.home_win, "draw": r.draw, "away": r.away_win})
+                            for r in gf.itertuples()]
+        gf["home / draw / away %"] = gf.apply(
+            lambda r: f"{r.home_win * 100:.0f} / {r.draw * 100:.0f} / {r.away_win * 100:.0f}", axis=1)
+        gf["xG"] = gf.xg_home.round(1).astype(str) + " – " + gf.xg_away.round(1).astype(str)
+        gf["O/U 2.5"] = gf.under25.apply(lambda u: f"Under {u * 100:.0f}%" if u >= .5 else f"Over {(1 - u) * 100:.0f}%")
+
+        def _dchance(r):
+            fav, p = (r.home, r.home_win) if r.home_win >= r.away_win else (r.away, r.away_win)
+            return f"{fav} or draw {(p + r.draw) * 100:.0f}%"
+        gf["double chance"] = [_dchance(r) for r in gf.itertuples()]
+        gf = gf.sort_values(["group", "date"], na_position="last")
+        if q:
+            gf = gf[gf.home.str.lower().str.contains(q, regex=False) | gf.away.str.lower().str.contains(q, regex=False)]
+        st.dataframe(gf[["group", "date", "home", "away", "prediction", "home / draw / away %", "xG", "O/U 2.5",
+                         "double chance"]], width="stretch", height=520, hide_index=True)
+
+# ───────────────────────── Ratings ─────────────────────────
+with tab_ratings:
+    st.subheader("Current Glicko ratings")
+    st.caption("**Rating** = team strength (higher is better). **Uncertainty** = the model's error bar on that "
+               "rating: *how sure it is*. It's low (~60) for teams that play often against known opponents, and "
+               "high for rarely-seen or long-absent sides. It does real work — when a team's uncertainty is high, "
+               "the model **hedges its predictions toward 50/50** instead of overcommitting. Teams too uncertain "
+               "to rate reliably are hidden from this table.")
+    rt = ratings()
+    st.bar_chart(rt.head(25).set_index("team")["rating"], horizontal=True, height=520)
+    q = st.text_input("🔎 Filter by team", key="rt_filter").strip().lower()
+    show = rt[rt.team.str.lower().str.contains(q, regex=False)] if q else rt
+    st.dataframe(show, width="stretch", height=420, hide_index=True)
+
+    st.markdown("#### Confederation adjustment")
+    st.caption("Rating points added to each confederation's teams in **cross-continental matches only** — "
+               "learned from inter-confederation results. It cancels within a confederation, so it never "
+               "affects, say, Spain vs France.")
+    off = getattr(model, "confed_offsets", {})
+    if off:
+        offs = pd.Series(off, name="offset").sort_values(ascending=False)
+        offs.index.name = "confederation"
+        st.bar_chart(offs, horizontal=True, height=240)
+    with st.expander("How the confederation adjustment works"):
+        st.markdown(
+            "Only ~14% of international games cross confederations, and each top team plays very few "
+            "(Spain ≈ 11 in 8 years), so the *relative* strength of each confederation is poorly pinned by "
+            "ordinary ratings. We fix that by pooling **every** confederation's cross-continental games into one "
+            "shared offset, then adding it to its teams' ratings.\n\n"
+            "- **What it changed:** cross-continental log-loss improved ~3% on held-out 2024+ data, and our "
+            "continental bias vs the betting market roughly halved (e.g. UEFA −12.5 → −6.5 points).\n"
+            "- **CONMEBOL ≈ UEFA:** our *results* rate the two top confederations as co-leaders — when they "
+            "actually meet it's a coin-flip (98-51-67 since 2010). The market puts Europe clearly ahead, but "
+            "that's a squad-*depth* judgement a results-only model can't see (a squad-value test couldn't add "
+            "it without leaking future form).\n"
+            "- **Within-confederation games are untouched** — the offset cancels, so internal rankings are "
+            "exactly as before.")
+
+# ───────────────────────── Title odds ─────────────────────────
+with tab_odds:
+    st.subheader("🏆 Title odds — full tournament simulation")
+    st.caption("Monte-Carlo of the entire bracket (group stage → final, with the real format & tiebreakers) "
+               "from the goals model. Updates automatically as you enter results.")
+    with st.expander("⚙️ Advanced — uncertainty spread"):
+        sd = st.slider("Uncertainty scale — higher spreads the favourites out", 0.0, 3.0, 1.5, 0.25,
+                       help="Multiplies each team's OWN Glicko uncertainty. ~0 over-concentrates the top; "
+                            "~1.5 gives a market-like spread, with data-poor teams spread wider than well-known ones.")
+    try:
+        with st.spinner("Simulating 20,000 tournaments…"):
+            sim = run_sim(sd)
+        st.bar_chart(sim.head(16).set_index("team")["champion"].mul(100), horizontal=True, height=460)
+        show = sim.copy()
+        for col in ["win_group", "advance", "reach_QF", "reach_SF", "final", "champion"]:
+            show[col] = (show[col] * 100).round(1)
+        show = show.rename(columns={"win_group": "win grp %", "advance": "reach R32 %", "reach_QF": "reach QF %",
+                                    "reach_SF": "reach SF %", "final": "final %", "champion": "CHAMPION %"})
+        st.dataframe(show.head(32), width="stretch", height=460, hide_index=True)
+    except Exception:
+        import traceback
+        st.error("Title odds couldn't be computed right now — try a reboot (Manage app ▸ ⋮ ▸ Reboot).")
+        with st.expander("Error details"):
+            st.code(traceback.format_exc())
+
+# ───────────────────────── Bracket ─────────────────────────
+with tab_bracket:
+    st.subheader("🗺️ Most-likely knockout bracket")
+    st.caption("From the current ratings + your entered results: projected group standings → the favourite "
+               "advances each round. The % is that favourite's chance in the tie. Re-projects as you enter results.")
+    try:
+        bk = bracket()
+        st.markdown(render_bracket(bk), unsafe_allow_html=True)
+        la, lb, lw, lp = bk["third"]
+        st.caption(f"🥉 Third-place play-off: **{la}** vs **{lb}** → **{lw}** ({lp * 100:.0f}%)")
+    except Exception:
+        import traceback
+        st.error("The bracket couldn't be projected right now — try a reboot (Manage app ▸ ⋮ ▸ Reboot).")
+        with st.expander("Error details"):
+            st.code(traceback.format_exc())
+
+# ───────────────────────── Enter a result ─────────────────────────
+with tab_enter:
+    if st.session_state.get("saved_msg"):
+        st.success(st.session_state.pop("saved_msg"))
+    st.subheader("➕ Enter a result — the ratings absorb it and every prediction updates")
+    st.caption("As games are played, record the score here. Pick an upcoming fixture (names guaranteed "
+               "to match), or a custom match for anything else.")
+    # Password gate (active only when ENTER_PWD is set as a Streamlit secret — i.e. on the deployed app).
+    # Locally with no secrets.toml, the gate is bypassed automatically.
+    # CRITICAL: gate ONLY this tab — do NOT call st.stop(), which would halt the whole script.
+    try:
+        expected_pwd = st.secrets.get("ENTER_PWD", "")
+    except Exception:
+        expected_pwd = ""
+    locked = bool(expected_pwd) and not st.session_state.get("entry_unlocked")
+    if locked:
+        with st.form("pwd_form", clear_on_submit=False):
+            attempt = st.text_input("🔒 Password to enter results", type="password")
+            if st.form_submit_button("Unlock"):
+                if attempt == expected_pwd:
+                    st.session_state["entry_unlocked"] = True
+                    st.rerun()
+                else:
+                    st.error("Wrong password.")
+    else:
+        gf = fixtures()
+        opts = ["✏️  Custom match (any two teams)"] + [f"{r.date}    {r.home}  vs  {r.away}" for r in gf.itertuples()]
+        pick = st.selectbox("Which game?", opts)
+        if pick.startswith("✏️"):
+            cc1, cc2 = st.columns(2)
+            h = cc1.selectbox("Home team", model.teams, index=(model.teams.index("France") if "France" in model.teams else 0), key="cust_h")
+            a = cc2.selectbox("Away team", model.teams, index=(model.teams.index("England") if "England" in model.teams else 1), key="cust_a")
+            cc3, cc4, cc5 = st.columns(3)
+            tourn = cc3.text_input("Tournament", value="Friendly")
+            neutral = cc4.checkbox("Neutral venue", value=True)
+            d = cc5.date_input("Date", key="cust_d")
+        else:
+            row = gf.iloc[opts.index(pick) - 1]
+            h, a, tourn, neutral, d = row.home, row.away, "FIFA World Cup", True, pd.to_datetime(row.date).date()
+            st.info(f"**{h}**  vs  **{a}**   ·   {row.date}")
+
+        sc1, sc2 = st.columns(2)
+        hs = sc1.number_input(f"⚽ {h} goals", min_value=0, max_value=30, value=0, step=1, key="hs_in")
+        as_ = sc2.number_input(f"⚽ {a} goals", min_value=0, max_value=30, value=0, step=1, key="as_in")
+
+        if st.button("💾 Save result & update ratings", type="primary", disabled=(h == a)):
+            wc.record_result(h, a, hs, as_, str(d), tourn, neutral)
+            st.cache_resource.clear(); st.cache_data.clear()
+            st.session_state["saved_msg"] = f"Saved  {h} {int(hs)}–{int(as_)} {a}.  Ratings updated — predictions now reflect it."
+            st.rerun()
+
+        if os.path.exists(wc.MANUAL_RESULTS):
+            man = pd.read_csv(wc.MANUAL_RESULTS)
+            if len(man):
+                st.markdown("**Results you've entered:**")
+                st.dataframe(man[["date", "home_team", "away_team", "home_score", "away_score"]].iloc[::-1],
+                             width="stretch", hide_index=True)
+                if st.button("🗑️ Clear all entered results"):
+                    os.remove(wc.MANUAL_RESULTS)
+                    st.cache_resource.clear(); st.cache_data.clear()
+                    st.session_state["saved_msg"] = "Cleared all entered results."
+                    st.rerun()
+
 st.divider()
-st.caption("⚠️ A model, not a crystal ball: ~40% of matches (draws + upsets) are near-random, so these "
-           "are honest *probabilities*, not certainties.")
+st.caption(f"⚠️ A model, not a crystal ball: ~40% of matches (draws + upsets) are near-random, so these are honest "
+           f"*probabilities*, not certainties.   ·   data through **{data_through()}**   ·   build `{CACHE_VERSION}`")
