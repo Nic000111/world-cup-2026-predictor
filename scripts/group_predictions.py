@@ -24,7 +24,7 @@ from sklearn.linear_model import LogisticRegression, PoissonRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-import elo
+import glicko_engine as elo     # shipped engine (Glicko); aliased so the rest of the script is unchanged
 
 CLASSES = ["home_win", "draw", "away_win"]; MAXG = 10
 FEATS = ["scorer_elo", "opp_elo", "is_home", "is_friendly"]

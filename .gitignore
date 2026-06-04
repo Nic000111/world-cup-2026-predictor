@@ -19,3 +19,5 @@ manual_results.csv
 
 # Local-only deliverables (saved to ~/Downloads anyway)
 *.command
+data/
+downloaded_files/

@@ -14,7 +14,7 @@ st.set_page_config(page_title="World Cup 2026 Predictor", page_icon="⚽", layou
 
 # Bump CACHE_VERSION whenever the model interface changes, so every cached entry
 # invalidates automatically on next deploy (avoids stale-pickle bugs on Streamlit Cloud).
-CACHE_VERSION = "v2-confed-elo"
+CACHE_VERSION = "v3-glicko"
 
 
 @st.cache_resource
@@ -33,8 +33,8 @@ def ratings(_v=CACHE_VERSION):
 
 
 @st.cache_data
-def run_sim(rating_sd, _v=CACHE_VERSION):
-    return load_model().simulate_tournament(n_sim=20000, rating_sd=rating_sd)
+def run_sim(rd_scale, _v=CACHE_VERSION):
+    return load_model().simulate_tournament(n_sim=20000, rd_scale=rd_scale)
 
 
 @st.cache_data
@@ -72,9 +72,10 @@ def render_bracket(bk):
 model = load_model()
 
 st.title("⚽ World Cup 2026 — Match Predictor")
-st.caption("Two models on a self-computed Elo (full international history; models trained on 2010+), "
-           "with a **per-confederation adjustment** for cross-continental strength: "
-           "**Elo-logistic** for win/draw/loss · **Elo-Poisson + Dixon–Coles** for goals & scorelines. "
+st.caption("Two models on a self-computed **Glicko** rating (full international history; models trained on 2010+) — "
+           "each team carries a rating **and an uncertainty**, which beat plain Elo on held-out log-loss. "
+           "With a **per-confederation adjustment** for cross-continental strength: "
+           "**Glicko-logistic** for win/draw/loss · **Glicko-Poisson + Dixon–Coles** for goals & scorelines. "
            "Hyperparameters tuned on 2022–23 and validated on a held-out 2024–25 test set; "
            "deployed model refit on all played games through today.")
 
@@ -99,7 +100,8 @@ with tab1:
         r = model.predict_match(home, away, neutral=neutral)
 
         st.markdown(f"### {home} {'(home) ' if not neutral else ''}vs {away}")
-        st.caption(f"Elo —  {home}: **{r['elo'][0]:.0f}**   ·   {away}: **{r['elo'][1]:.0f}**")
+        st.caption(f"Glicko rating —  {home}: **{r['rating'][0]:.0f}** ±{r['rd'][0]:.0f}   ·   "
+                   f"{away}: **{r['rating'][1]:.0f}** ±{r['rd'][1]:.0f}   (± = uncertainty)")
 
         st.markdown("#### Win / Draw / Loss")
         m1, m2, m3 = st.columns(3)
@@ -107,7 +109,7 @@ with tab1:
         m2.metric("Draw", f"{r['goals']['draw'] * 100:.0f}%")
         m3.metric(f"{away} win", f"{r['goals']['away'] * 100:.0f}%")
         prob = pd.DataFrame(
-            {"Elo-logistic": [r["logistic"]["home"], r["logistic"]["draw"], r["logistic"]["away"]],
+            {"Glicko-logistic": [r["logistic"]["home"], r["logistic"]["draw"], r["logistic"]["away"]],
              "Goals model": [r["goals"]["home"], r["goals"]["draw"], r["goals"]["away"]]},
             index=[f"{home} win", "Draw", f"{away} win"]) * 100
         st.bar_chart(prob, horizontal=True)
@@ -140,13 +142,13 @@ with tab2:
 
 # ───────────────────────── Tab 3: ratings ─────────────────────────
 with tab3:
-    st.subheader("Current Elo ratings")
+    st.subheader("Current Glicko ratings")
     rt = ratings()
-    st.bar_chart(rt.head(25).set_index("team")["elo"], horizontal=True, height=520)
+    st.bar_chart(rt.head(25).set_index("team")["rating"], horizontal=True, height=520)
     st.dataframe(rt, width="stretch", height=420, hide_index=True)
 
     st.markdown("#### Confederation adjustment")
-    st.caption("Elo points added to each confederation's teams in **cross-continental matches only** — "
+    st.caption("Rating points added to each confederation's teams in **cross-continental matches only** — "
                "learned from inter-confederation results. It cancels within a confederation, so it never "
                "affects, say, Spain vs France.")
     off = getattr(model, "confed_offsets", {})
@@ -158,7 +160,7 @@ with tab3:
         st.markdown(
             "Only ~14% of international games cross confederations, and each top team plays very few "
             "(Spain ≈ 11 in 8 years), so the *relative* strength of each confederation is poorly pinned by "
-            "ordinary Elo. We fix that by pooling **every** confederation's cross-continental games into one "
+            "ordinary ratings. We fix that by pooling **every** confederation's cross-continental games into one "
             "shared offset, then adding it to its teams' ratings.\n\n"
             "- **What it changed:** cross-continental log-loss improved ~3% on held-out 2024+ data, and our "
             "continental bias vs the betting market roughly halved (e.g. UEFA −12.5 → −6.5 points).\n"
@@ -173,7 +175,7 @@ with tab3:
 with tab4:
     if st.session_state.get("saved_msg"):
         st.success(st.session_state.pop("saved_msg"))
-    st.subheader("➕ Enter a result — the Elo absorbs it and every prediction updates")
+    st.subheader("➕ Enter a result — the ratings absorb it and every prediction updates")
     st.caption("As games are played, record the score here. Pick an upcoming fixture (names guaranteed "
                "to match), or a custom match for anything else.")
     # Password gate (active only when ENTER_PWD is set as a Streamlit secret — i.e. on the deployed app).
@@ -239,8 +241,9 @@ with tab5:
     st.subheader("🏆 Title odds — full tournament simulation")
     st.caption("Monte-Carlo of the entire bracket (group stage → final, with the real format & tiebreakers) "
                "from the goals model. Updates automatically as you enter results.")
-    sd = st.slider("Uncertainty — higher spreads the favourites out", 0, 200, 125, 25,
-                   help="Per-simulation Elo noise. ~0 over-concentrates the top; ~125 gives a market-like spread.")
+    sd = st.slider("Uncertainty scale — higher spreads the favourites out", 0.0, 3.0, 1.5, 0.25,
+                   help="Multiplies each team's OWN Glicko uncertainty. ~0 over-concentrates the top; "
+                        "~1.5 gives a market-like spread, with data-poor teams spread wider than well-known ones.")
     try:
         with st.spinner("Simulating 20,000 tournaments…"):
             sim = run_sim(sd)

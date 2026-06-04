@@ -6,7 +6,8 @@ Standalone analysis, tuning, and diagnostic scripts. Each one bootstraps the pro
 
 | script | what it does |
 |---|---|
-| `tune_elo.py` | Sweeps `k_base` × `home_advantage` × MoV on/off, picks the val-LL minimum. Where the current Elo defaults come from. |
+| `glicko.py` | **The head-to-head that picked the shipped engine.** Builds Glicko (rating + uncertainty), coordinate-descent-tunes every parameter, forward-selects features, and beats Elo on held-out log-loss. Why `glicko_engine.py` is the engine. |
+| `tune_elo.py` | Sweeps `k_base` × `home_advantage` × MoV for the *legacy* Elo engine (the Glicko baseline). |
 | `tune_confed.py` | Sweeps `k_confed` (confederation learning rate). The tuning that produced the cross-continental fix. |
 | `final_test.py` | Single-shot evaluation on the held-out 2024+ test set. Run this once after every methodology change to update the "shipped" numbers. |
 | `calibration.py` | Reliability diagram + ECE for the W/D/L model; writes `docs/calibration.png` (the plot in the main README). Evidence that the probabilities are honest, not a calibration fix. |

@@ -20,7 +20,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 import confed
-import elo
+import glicko_engine as engine     # uncertainty-aware (Glicko) ratings — replaced Elo (beat it on held-out log-loss)
 
 CLASSES = ["home_win", "draw", "away_win"]
 MAXG = 10
@@ -64,14 +64,15 @@ def record_result(home, away, home_score, away_score, date, tournament="FIFA Wor
 
 class WorldCupModel:
     def __init__(self, results_path=DEFAULT_RESULTS):
-        feat, ratings = elo.build_features(load_results(results_path))
+        feat, ratings = engine.build_features(load_results(results_path))
         self.feat = feat
         self.team_elo = dict(ratings)
+        self.team_rd = dict(feat.attrs.get("final_rd", {}))          # per-team uncertainty (Glicko RD)
         pl = feat[feat.result.notna() & (feat.date >= "2010-01-01")].copy()
         pl["is_friendly"] = pl.tournament.str.contains("friendly", case=False).astype(float)
 
-        # model 1: Elo-logistic (1X2)
-        self.F = elo.V1_FEATURES
+        # model 1: Glicko-logistic (1X2)
+        self.F = engine.V1_FEATURES
         self.lr = Pipeline([("sc", StandardScaler()), ("clf", LogisticRegression(C=0.01, max_iter=2000))]).fit(pl[self.F], pl["result"])
 
         # model 2: Elo-Poisson + Dixon-Coles (goals)
@@ -83,10 +84,6 @@ class WorldCupModel:
         self.rho = float(minimize_scalar(lambda r: -np.sum(np.log(np.clip(self._tau(xt, yt, lh, la, r), 1e-9, None))),
                                          bounds=(-0.2, 0.2), method="bounded").x)
 
-        # current momentum per team (from its most recent appearance)
-        hm = feat[["date", "home_team", "home_mom"]].rename(columns={"home_team": "team", "home_mom": "mom"})
-        am = feat[["date", "away_team", "away_mom"]].rename(columns={"away_team": "team", "away_mom": "mom"})
-        self.team_mom = pd.concat([hm, am]).sort_values("date").groupby("team").mom.last().to_dict()
         self.teams = sorted(self.team_elo)
         self.confed_offsets = dict(feat.attrs.get("confed_offsets", {}))   # per-confederation cross-continental offset
 
@@ -123,8 +120,9 @@ class WorldCupModel:
     def predict_match(self, home, away, neutral=True):
         eh, ea = self.team_elo[home], self.team_elo[away]
         gap = eh - ea
+        rd0 = engine.DEFAULT_PARAMS["rd_init"]
         feats = pd.DataFrame([{"rating_gap": gap, "home_adv_flag": int(not neutral), "abs_gap": abs(gap),
-                               "mom_diff": self.team_mom.get(home, 0.) - self.team_mom.get(away, 0.), "rest_diff": 0.}])[self.F]
+                               "rd_sum": self.team_rd.get(home, rd0) + self.team_rd.get(away, rd0)}])[self.F]
         lp = self.lr.predict_proba(feats)[0][[list(self.lr.classes_).index(c) for c in CLASSES]]
         lh = float(self._mu([eh], [ea], [0. if neutral else 1.], [0.])[0])
         la = float(self._mu([ea], [eh], [0.], [0.])[0])
@@ -133,7 +131,8 @@ class WorldCupModel:
         si, sj = np.unravel_index(M.argmax(), M.shape)
         flat = M.ravel()
         top = [(f"{i}-{j}", float(flat[t])) for t in np.argsort(flat)[::-1][:6] for (i, j) in [np.unravel_index(t, M.shape)]]
-        return {"home": home, "away": away, "neutral": neutral, "elo": (float(eh), float(ea)),
+        return {"home": home, "away": away, "neutral": neutral, "rating": (float(eh), float(ea)),
+                "rd": (float(self.team_rd.get(home, rd0)), float(self.team_rd.get(away, rd0))),
                 "logistic": {"home": float(lp[0]), "draw": float(lp[1]), "away": float(lp[2])},
                 "goals": {"home": gh, "draw": gd, "away": ga}, "xg": (lh, la),
                 "likely_score": f"{si}-{sj}", "top_scores": top, "matrix": M}
@@ -149,10 +148,13 @@ class WorldCupModel:
         return pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
 
     def ratings_table(self):
-        return (pd.DataFrame({"team": list(self.team_elo),
-                              "confederation": [confed.confed_of(t) for t in self.team_elo],
-                              "elo": [round(v) for v in self.team_elo.values()]})
-                .sort_values("elo", ascending=False).reset_index(drop=True))
+        rd0 = engine.DEFAULT_PARAMS["rd_init"]
+        df = pd.DataFrame({"team": list(self.team_elo),
+                           "confederation": [confed.confed_of(t) for t in self.team_elo],
+                           "rating": [round(v) for v in self.team_elo.values()],
+                           "uncertainty": [round(self.team_rd.get(t, rd0)) for t in self.team_elo]})
+        df = df[df.uncertainty <= 85]      # drop barely-tracked non-national sides (high RD) from the display
+        return df.sort_values("rating", ascending=False).reset_index(drop=True)
 
     # ---- tournament Monte-Carlo (with rating uncertainty) ----
     def _adv(self, la, lb):
@@ -165,10 +167,11 @@ class WorldCupModel:
         tot = h + d + a; h, a = h / tot, a / tot
         return h + (1 - h - a) * (h / (h + a)) if (h + a) > 0 else 0.5
 
-    def simulate_tournament(self, n_sim=20000, rating_sd=125.0, seed=0):
-        """Monte-Carlo the 2026 World Cup. Each run perturbs every team's Elo by N(0, rating_sd)
-        (rating uncertainty -> favourites aren't over-concentrated). Returns per-team probabilities
-        of winning the group / advancing / reaching each round / lifting the cup."""
+    def simulate_tournament(self, n_sim=20000, rd_scale=1.5, seed=0):
+        """Monte-Carlo the 2026 World Cup. Each run perturbs every team's rating by its OWN Glicko
+        uncertainty N(0, rd_scale * team_RD) -- so genuinely data-poor / volatile teams spread out
+        more than well-known ones (real per-team uncertainty, not a flat fudge). Returns per-team
+        probabilities of winning the group / advancing / reaching each round / lifting the cup."""
         rng = np.random.default_rng(seed)
         sc, po = self.gm.named_steps["sc"], self.gm.named_steps["po"]
         mu, sg, cf, b0 = sc.mean_, sc.scale_, po.coef_, po.intercept_
@@ -180,6 +183,8 @@ class WorldCupModel:
         wc = self.feat[(self.feat.tournament == "FIFA World Cup") & (self.feat.date.dt.year == 2026)]  # all 72 group fixtures (played or not)
         teams = sorted(set(wc.home_team) | set(wc.away_team)); ti = {t: i for i, t in enumerate(teams)}
         base = np.array([self.team_elo[t] for t in teams])
+        rd0 = engine.DEFAULT_PARAMS["rd_init"]
+        sd = np.array([self.team_rd.get(t, rd0) for t in teams]) * rd_scale   # per-team uncertainty
         adj = defaultdict(set)
         for _, r in wc.iterrows():
             adj[r.home_team].add(r.away_team); adj[r.away_team].add(r.home_team)
@@ -216,7 +221,7 @@ class WorldCupModel:
         R16 = {89: (74, 77), 90: (73, 75), 91: (76, 78), 92: (79, 80), 93: (83, 84), 94: (81, 82), 95: (86, 88), 96: (85, 87)}
         QF = {97: (89, 90), 98: (93, 94), 99: (91, 92), 100: (95, 96)}; SF = {101: (97, 98), 102: (99, 100)}
 
-        pe = base[None, :] + rng.normal(0, rating_sd, (n_sim, 48))
+        pe = base[None, :] + rng.normal(0, 1, (n_sim, 48)) * sd[None, :]
         HG, AG = [], []
         for h, a, ih, hs, as_ in fixtures:
             if pd.notna(hs):                                       # already played -> use the real score
@@ -253,7 +258,7 @@ class WorldCupModel:
                     reach[nxt][win[m]] += 1; k += 1
             t1, t2 = win[101], win[102]
             reach["champion"][t1 if KO[s, k] < np.interp(ps[t1] - ps[t2], gaps, adv_tab) else t2] += 1
-        out = pd.DataFrame({"team": teams, "elo": base.round().astype(int)})
+        out = pd.DataFrame({"team": teams, "rating": base.round().astype(int)})
         for kk in reach:
             out[kk] = reach[kk] / n_sim
         return out.sort_values("champion", ascending=False).reset_index(drop=True)

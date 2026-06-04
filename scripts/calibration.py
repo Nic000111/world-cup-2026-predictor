@@ -29,7 +29,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-import elo
+import glicko_engine as elo     # shipped engine (Glicko); aliased 'elo' to keep the script tidy
 
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
