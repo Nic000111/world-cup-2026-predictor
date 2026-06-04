@@ -134,19 +134,20 @@ with tab1:
             index=[f"{home} win", "Draw", f"{away} win"])
         st.table(prob)
 
-        st.markdown("#### Expected goals & goal markets")
+        dc_h, dc_a = g["home"] + g["draw"], g["away"] + g["draw"]
+        st.caption(f"**Double chance** (win or draw) —  {home}: **{dc_h * 100:.0f}%**   ·   "
+                   f"{away}: **{dc_a * 100:.0f}%**.  The 'safer' market — that side just has to avoid losing.")
+
+        st.markdown("#### Expected goals & goals market")
         mk = r.get("markets", {})
-        x1, x2, x3, x4 = st.columns(4)
+        x1, x2, x3 = st.columns(3)
         x1.metric(f"{home} expected goals", f"{r['xg'][0]:.2f}")
         x2.metric(f"{away} expected goals", f"{r['xg'][1]:.2f}")
         if mk:
-            u, b = mk["under25"], mk["btts_yes"]
+            u = mk["under25"]
             x3.metric("Goals — O/U 2.5", f"Under {u * 100:.0f}%" if u >= .5 else f"Over {(1 - u) * 100:.0f}%",
                       help="Over / Under 2.5 total goals: whether the match more likely has 3 or more goals (Over) "
                            "or 2 or fewer (Under).")
-            x4.metric("Both teams score (yes)", f"{b * 100:.0f}%",
-                      help="Chance both teams each score at least one goal. Usually under 50% — international "
-                           "football is low-scoring, so more often than not at least one side is kept out.")
         st.caption("**Expected goals** = the average each side is forecast to score. We deliberately **don't show a "
                    "single most-likely scoreline** — the likeliest exact score is often a low draw (like 1-1) even "
                    "when one team is clearly favoured, which misleads more than it helps. The probabilities above "
@@ -156,8 +157,8 @@ with tab1:
 with tab2:
     st.subheader("2026 World Cup — group-stage forecast")
     st.caption("Each fixture's **prediction** (most likely outcome — *Lean* flags a near-toss-up), the **chances** "
-               "(home / draw / away %), **expected goals**, and the two standard goal markets — **Over/Under 2.5** "
-               "and **both teams to score (BTTS)**. Played games drop off as you enter results.")
+               "(home / draw / away %), **expected goals**, the **Over/Under 2.5** goals market, and the favourite's "
+               "**double chance** (win-or-draw). Played games drop off as you enter results.")
     with st.expander("ℹ️ What the columns mean"):
         st.markdown(
             "- **Prediction** — the single most likely result. **“X win”** is a clear favourite; **“Lean X”** means "
@@ -171,9 +172,9 @@ with tab2:
             "scoreline. *(An average near 0.9 usually means that team most likely scores 0 or 1.)*\n"
             "- **O/U 2.5** — Over / Under 2.5 total goals: whether the match more likely ends with **3 or more** goals "
             "(Over) or **2 or fewer** (Under), with that side's probability.\n"
-            "- **BTTS (yes)** — the chance **both** teams each score at least one goal. It's usually **under 50%**: "
-            "international football is low-scoring, so more often than not at least one side is kept off the "
-            "scoresheet (a higher number = a more open, both-scoring game).")
+            "- **Double chance** — the favourite's **win-or-draw** probability (e.g. *Mexico or draw 89%*). The "
+            "'safer' bet: that side just has to avoid losing, so it's always higher than the plain win %. The team "
+            "shown is the one named in the prediction column.")
     gf = fixtures().copy()
     if len(gf) == 0:
         st.info("All group fixtures have been played (entered as results). 🎉")
@@ -187,8 +188,11 @@ with tab2:
             lambda r: f"{r.home_win * 100:.0f} / {r.draw * 100:.0f} / {r.away_win * 100:.0f}", axis=1)
         gf["xG"] = gf.xg_home.round(1).astype(str) + " – " + gf.xg_away.round(1).astype(str)
         gf["O/U 2.5"] = gf.under25.apply(lambda u: f"Under {u * 100:.0f}%" if u >= .5 else f"Over {(1 - u) * 100:.0f}%")
-        gf["BTTS (yes)"] = gf.btts_yes.apply(lambda b: f"{b * 100:.0f}%")
-        st.dataframe(gf[["date", "home", "away", "prediction", "home / draw / away %", "xG", "O/U 2.5", "BTTS (yes)"]],
+        def _dchance(r):
+            fav, p = (r.home, r.home_win) if r.home_win >= r.away_win else (r.away, r.away_win)
+            return f"{fav} or draw {(p + r.draw) * 100:.0f}%"
+        gf["double chance"] = [_dchance(r) for r in gf.itertuples()]
+        st.dataframe(gf[["date", "home", "away", "prediction", "home / draw / away %", "xG", "O/U 2.5", "double chance"]],
                      width="stretch", height=560, hide_index=True)
 
 # ───────────────────────── Tab 3: ratings ─────────────────────────
