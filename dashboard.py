@@ -198,25 +198,34 @@ with tab_good:
                "out-of-sample performance, not the model marking its own homework.")
 
     a, b, c = st.columns(3)
-    a.metric("Winner called right", "≈ 60%",
-             help="On held-out 2024–25 games. Blind guessing gets 33%. Always backing the favourite scores about "
-                  "the same 60% — which is roughly the ceiling for any results-only model.")
-    b.metric("Are the % honest?", "Yes",
+    a.metric("Are the % honest?", "Yes",
              help="Calibration error (ECE) ≈ 0.02 — tiny. When it says 70%, that outcome really happens about "
-                  "70% of the time.")
-    c.metric("Agreement with bookies", "0.90",
-             help="Correlation between our title odds and the de-vigged betting market — close to the sharp money, "
-                  "without ever looking at odds.")
+                  "70% of the time. This is the number that actually matters for a probability model.")
+    b.metric("Matches the betting market", "0.90",
+             help="Correlation between our title odds and the de-vigged bookmaker market — about as sharp as the "
+                  "pros, without ever looking at their odds.")
+    c.metric("Winner called right", "≈ 60%",
+             help="On held-out 2024–25 games. That's ~2× random's 33% (it's a 3-way pick, not a coin flip). It "
+                  "looks modest only because ~60% is the ceiling for everyone — even the bookmakers' favourites win "
+                  "at a similar rate. The least useful of these three numbers.")
 
     st.markdown(
         "#### The one-line answer\n"
-        "It picks the winner right about **3 times in 5**, and — more importantly — its **percentages are honest**: "
-        "when it says *70%*, that result really happens about 70% of the time. Think of it as a calm, well-informed "
+        "Its **percentages are honest** — when it says *70%*, that result really happens about 70% of the time — and "
+        "it lands **about as sharp as the betting market**: a 0.90 correlation with bookmaker odds, *without ever "
+        "looking at a single price*. For a model built on **past results alone**, quietly matching the market is the "
+        "real headline — that's the gold standard, and we're right next to it. Think calm, well-informed "
         "favourite-picker, not a crystal ball.\n\n"
-        "**Why not better than 60%?** Because about **1 game in 4 is a draw**, and a draw is almost never any single "
-        "team's most-likely result — so a hard slice of matches is near-unpredictable *for anyone*. Roughly "
-        "**60% accuracy is the ceiling** for a model built only on past results. Beating it means knowing things "
-        "results can't tell you: injuries, who's hot this week, how deep the bench really is.")
+        "#### \"But it's only ~60% accurate?\"\n"
+        "That's the number to trust **least**, for two reasons:\n"
+        "- **It's about 2× random.** A blind guess on a three-way result (home / draw / away) is 33% — so 60% is "
+        "close to *double*, not barely above it.\n"
+        "- **~60% is the ceiling for *everyone* — even the bookmakers.** About 1 game in 4 is a draw, and a draw is "
+        "almost never anyone's single most-likely pick: the market rarely tips one either, and even bookmaker odds "
+        "barely predict which games end level. So the sharpest odds in the world run into the same wall — their "
+        "favourites win at a similar rate to ours. Our 60% isn't the model being weak; it's the model hitting the "
+        "same irreducible randomness the pros can't beat. What separates a good model from a bad one here is whether "
+        "the **probabilities** are honest — and ours are.")
 
     col_g, col_b = st.columns(2)
     with col_g:
