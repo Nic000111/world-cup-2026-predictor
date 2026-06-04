@@ -144,8 +144,9 @@ with tab1:
             x3.metric("Goals — O/U 2.5", f"Under {u * 100:.0f}%" if u >= .5 else f"Over {(1 - u) * 100:.0f}%",
                       help="Over / Under 2.5 total goals: whether the match more likely has 3 or more goals (Over) "
                            "or 2 or fewer (Under).")
-            x4.metric("Both teams to score", f"No {(1 - b) * 100:.0f}%" if b < .5 else f"Yes {b * 100:.0f}%",
-                      help="Whether both teams more likely each score at least one goal (Yes) or not (No).")
+            x4.metric("Both teams score (yes)", f"{b * 100:.0f}%",
+                      help="Chance both teams each score at least one goal. Usually under 50% — international "
+                           "football is low-scoring, so more often than not at least one side is kept out.")
         st.caption("**Expected goals** = the average each side is forecast to score. We deliberately **don't show a "
                    "single most-likely scoreline** — the likeliest exact score is often a low draw (like 1-1) even "
                    "when one team is clearly favoured, which misleads more than it helps. The probabilities above "
@@ -170,8 +171,9 @@ with tab2:
             "scoreline. *(An average near 0.9 usually means that team most likely scores 0 or 1.)*\n"
             "- **O/U 2.5** — Over / Under 2.5 total goals: whether the match more likely ends with **3 or more** goals "
             "(Over) or **2 or fewer** (Under), with that side's probability.\n"
-            "- **BTTS** — *both teams to score*: whether **both** sides more likely each score at least one goal (Yes) "
-            "or not (No), with the probability.")
+            "- **BTTS (yes)** — the chance **both** teams each score at least one goal. It's usually **under 50%**: "
+            "international football is low-scoring, so more often than not at least one side is kept off the "
+            "scoresheet (a higher number = a more open, both-scoring game).")
     gf = fixtures().copy()
     if len(gf) == 0:
         st.info("All group fixtures have been played (entered as results). 🎉")
@@ -185,8 +187,8 @@ with tab2:
             lambda r: f"{r.home_win * 100:.0f} / {r.draw * 100:.0f} / {r.away_win * 100:.0f}", axis=1)
         gf["xG"] = gf.xg_home.round(1).astype(str) + " – " + gf.xg_away.round(1).astype(str)
         gf["O/U 2.5"] = gf.under25.apply(lambda u: f"Under {u * 100:.0f}%" if u >= .5 else f"Over {(1 - u) * 100:.0f}%")
-        gf["BTTS"] = gf.btts_yes.apply(lambda b: f"No {(1 - b) * 100:.0f}%" if b < .5 else f"Yes {b * 100:.0f}%")
-        st.dataframe(gf[["date", "home", "away", "prediction", "home / draw / away %", "xG", "O/U 2.5", "BTTS"]],
+        gf["BTTS (yes)"] = gf.btts_yes.apply(lambda b: f"{b * 100:.0f}%")
+        st.dataframe(gf[["date", "home", "away", "prediction", "home / draw / away %", "xG", "O/U 2.5", "BTTS (yes)"]],
                      width="stretch", height=560, hide_index=True)
 
 # ───────────────────────── Tab 3: ratings ─────────────────────────
