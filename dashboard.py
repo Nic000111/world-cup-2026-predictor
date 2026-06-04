@@ -63,7 +63,7 @@ def render_bracket(bk):
     champ, _ = bk["champion"]; fa, fb, fw, fp = bk["final"]
     body = (col("Round of 16", bk["R16"]) + col("Quarter-finals", bk["QF"]) + col("Semi-finals", bk["SF"])
             + f'<div class="rd"><div class="rt">Final</div><div class="ms">{box(fa, fb, fw)}</div></div>'
-            + f'<div class="rd"><div class="rt">Champion</div><div class="champ">🏆<br>{champ}<br><span class="cp">{fp * 100:.0f}% in final</span></div></div>')
+            + f'<div class="rd"><div class="rt">Champion</div><div class="champ">🏆<br>{champ}</div></div>')
     css = """<style>
 .bk{display:flex;gap:12px;align-items:stretch;overflow-x:auto;padding:6px 2px 12px;font-size:12.5px;line-height:1.2}
 .rd{display:flex;flex-direction:column;min-width:142px}
@@ -404,8 +404,9 @@ with tab_odds:
 # ───────────────────────── Bracket ─────────────────────────
 with tab_bracket:
     st.subheader("🗺️ Most-likely knockout bracket")
-    st.caption("From the current ratings + your entered results: projected group standings → the favourite "
-               "advances each round. The % is that favourite's chance in the tie. Re-projects as you enter results.")
+    st.caption("From the current ratings + your entered results: projected standings → the favourite advances each "
+               "round (the **bold** team is the projected winner of each tie). For each team's chance of winning the "
+               "**whole tournament**, see the 🏆 Title odds tab. Re-projects as you enter results.")
     try:
         bk = bracket()
         st.markdown(render_bracket(bk), unsafe_allow_html=True)

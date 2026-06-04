@@ -24,7 +24,7 @@ overround = sum(imp.values())
 mkt_p = {t: v / overround for t, v in imp.items()}      # de-vigged "true" market probability
 
 m = wc.WorldCupModel()
-sim = m.simulate_tournament(n_sim=30000, rating_sd=125)
+sim = m.simulate_tournament(n_sim=30000, rd_scale=1.5)
 ours = dict(zip(sim.team, sim.champion))
 
 df = pd.DataFrame({"team": list(mkt_p)})
