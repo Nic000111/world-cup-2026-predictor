@@ -73,7 +73,7 @@ model = load_model()
 
 st.title("⚽ World Cup 2026 — Match Predictor")
 st.caption("Two models on a self-computed **Glicko** rating (full international history; models trained on 2010+) — "
-           "each team carries a rating **and an uncertainty**, which beat plain Elo on held-out log-loss. "
+           "each team carries a rating **and an uncertainty**, so the model hedges when it's less sure. "
            "With a **per-confederation adjustment** for cross-continental strength: "
            "**Glicko-logistic** for win/draw/loss · **Glicko-Poisson + Dixon–Coles** for goals & scorelines. "
            "Hyperparameters tuned on 2022–23 and validated on a held-out 2024–25 test set; "
@@ -100,13 +100,8 @@ with tab1:
         r = model.predict_match(home, away, neutral=neutral)
 
         st.markdown(f"### {home} {'(home) ' if not neutral else ''}vs {away}")
-        rt = r.get("rating", r.get("elo", (0.0, 0.0)))          # tolerate a stale cached model during redeploys
-        rdv = r.get("rd")
-        if rdv:
-            st.caption(f"Glicko rating —  {home}: **{rt[0]:.0f}** ±{rdv[0]:.0f}   ·   "
-                       f"{away}: **{rt[1]:.0f}** ±{rdv[1]:.0f}   (± = uncertainty)")
-        else:
-            st.caption(f"Rating —  {home}: **{rt[0]:.0f}**   ·   {away}: **{rt[1]:.0f}**")
+        st.caption(f"Glicko rating —  {home}: **{r['rating'][0]:.0f}** ±{r['rd'][0]:.0f}   ·   "
+                   f"{away}: **{r['rating'][1]:.0f}** ±{r['rd'][1]:.0f}   (± = uncertainty)")
 
         st.markdown("#### Win / Draw / Loss")
         m1, m2, m3 = st.columns(3)
@@ -148,12 +143,11 @@ with tab2:
 # ───────────────────────── Tab 3: ratings ─────────────────────────
 with tab3:
     st.subheader("Current Glicko ratings")
-    st.caption("**Rating** = team strength (higher is better — like Elo). **Uncertainty** = the model's error "
-               "bar on that rating: *how sure it is*. It's low (~60) for teams that play often against known "
-               "opponents, and high for rarely-seen or long-absent sides. It does real work — when a team's "
-               "uncertainty is high, the model **hedges its predictions toward 50/50** instead of overcommitting "
-               "(which is exactly why this Glicko engine beats plain Elo). Teams too uncertain to rate reliably "
-               "are hidden from this table.")
+    st.caption("**Rating** = team strength (higher is better). **Uncertainty** = the model's error bar on that "
+               "rating: *how sure it is*. It's low (~60) for teams that play often against known opponents, and "
+               "high for rarely-seen or long-absent sides. It does real work — when a team's uncertainty is high, "
+               "the model **hedges its predictions toward 50/50** instead of overcommitting. Teams too uncertain "
+               "to rate reliably are hidden from this table.")
     rt = ratings()
     st.bar_chart(rt.head(25).set_index("team")["rating"], horizontal=True, height=520)
     st.dataframe(rt, width="stretch", height=420, hide_index=True)
