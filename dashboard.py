@@ -120,6 +120,9 @@ with tab1:
         label = outcome_label(home, away, g)
         top_pct = max(g["home"], g["draw"], g["away"]) * 100
         st.markdown(f"#### Most likely outcome:  {label}  ·  {top_pct:.0f}%")
+        st.caption("**“X win”** = a clear favourite  ·  **“Lean X”** = nearly a toss-up (a slight edge, not a "
+                   "confident call). A *draw* is rarely any match's single most likely result, so the pick almost "
+                   "always names a team.")
 
         st.markdown("**Probabilities — all outcomes**")
 
@@ -138,8 +141,11 @@ with tab1:
         x2.metric(f"{away} expected goals", f"{r['xg'][1]:.2f}")
         if mk:
             u, b = mk["under25"], mk["btts_yes"]
-            x3.metric("Goals — O/U 2.5", f"Under {u * 100:.0f}%" if u >= .5 else f"Over {(1 - u) * 100:.0f}%")
-            x4.metric("Both teams to score", f"No {(1 - b) * 100:.0f}%" if b < .5 else f"Yes {b * 100:.0f}%")
+            x3.metric("Goals — O/U 2.5", f"Under {u * 100:.0f}%" if u >= .5 else f"Over {(1 - u) * 100:.0f}%",
+                      help="Over / Under 2.5 total goals: whether the match more likely has 3 or more goals (Over) "
+                           "or 2 or fewer (Under).")
+            x4.metric("Both teams to score", f"No {(1 - b) * 100:.0f}%" if b < .5 else f"Yes {b * 100:.0f}%",
+                      help="Whether both teams more likely each score at least one goal (Yes) or not (No).")
         st.caption("**Expected goals** = the average each side is forecast to score. We deliberately **don't show a "
                    "single most-likely scoreline** — the likeliest exact score is often a low draw (like 1-1) even "
                    "when one team is clearly favoured, which misleads more than it helps. The probabilities above "
@@ -151,6 +157,21 @@ with tab2:
     st.caption("Each fixture's **prediction** (most likely outcome — *Lean* flags a near-toss-up), the **chances** "
                "(home / draw / away %), **expected goals**, and the two standard goal markets — **Over/Under 2.5** "
                "and **both teams to score (BTTS)**. Played games drop off as you enter results.")
+    with st.expander("ℹ️ What the columns mean"):
+        st.markdown(
+            "- **Prediction** — the single most likely result. **“X win”** is a clear favourite; **“Lean X”** means "
+            "it's nearly a toss-up (the favourite leads the next outcome by under ~12 points) — a slight edge, not a "
+            "confident call. You'll never see *“Draw”* here: a draw is rarely any match's single most likely outcome "
+            "(it tops out around 31%), so one team's win almost always edges it.\n"
+            "- **home / draw / away %** — the chance of each result: home team wins / draw / away team wins. They add "
+            "up to 100%. *(At neutral World Cup venues “home” is just the side listed first — no advantage.)*\n"
+            "- **xG (expected goals)** — the *average* number of goals each side is forecast to score (e.g. 1.8 – 0.8). "
+            "It shows who should score more and whether the game looks tight or one-sided — it is **not** a predicted "
+            "scoreline. *(An average near 0.9 usually means that team most likely scores 0 or 1.)*\n"
+            "- **O/U 2.5** — Over / Under 2.5 total goals: whether the match more likely ends with **3 or more** goals "
+            "(Over) or **2 or fewer** (Under), with that side's probability.\n"
+            "- **BTTS** — *both teams to score*: whether **both** sides more likely each score at least one goal (Yes) "
+            "or not (No), with the probability.")
     gf = fixtures().copy()
     if len(gf) == 0:
         st.info("All group fixtures have been played (entered as results). 🎉")
