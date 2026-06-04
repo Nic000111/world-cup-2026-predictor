@@ -124,15 +124,11 @@ with tab1:
                    "confident call). A *draw* is rarely any match's single most likely result, so the pick almost "
                    "always names a team.")
 
-        st.markdown("**Probabilities — all outcomes**")
-
-        def _pc(x):
-            return f"{x * 100:.0f}%"
-        prob = pd.DataFrame(
-            {"Goals model": [_pc(g["home"]), _pc(g["draw"]), _pc(g["away"])],
-             "Glicko-logistic": [_pc(r["logistic"]["home"]), _pc(r["logistic"]["draw"]), _pc(r["logistic"]["away"])]},
-            index=[f"{home} win", "Draw", f"{away} win"])
-        st.table(prob)
+        st.markdown("#### Win / Draw / Loss")
+        m1, m2, m3 = st.columns(3)
+        m1.metric(f"{home} win", f"{g['home'] * 100:.0f}%")
+        m2.metric("Draw", f"{g['draw'] * 100:.0f}%")
+        m3.metric(f"{away} win", f"{g['away'] * 100:.0f}%")
 
         dc_h, dc_a = g["home"] + g["draw"], g["away"] + g["draw"]
         st.caption(f"**Double chance** (win or draw) —  {home}: **{dc_h * 100:.0f}%**   ·   "
