@@ -148,6 +148,12 @@ with tab2:
 # ───────────────────────── Tab 3: ratings ─────────────────────────
 with tab3:
     st.subheader("Current Glicko ratings")
+    st.caption("**Rating** = team strength (higher is better — like Elo). **Uncertainty** = the model's error "
+               "bar on that rating: *how sure it is*. It's low (~60) for teams that play often against known "
+               "opponents, and high for rarely-seen or long-absent sides. It does real work — when a team's "
+               "uncertainty is high, the model **hedges its predictions toward 50/50** instead of overcommitting "
+               "(which is exactly why this Glicko engine beats plain Elo). Teams too uncertain to rate reliably "
+               "are hidden from this table.")
     rt = ratings()
     st.bar_chart(rt.head(25).set_index("team")["rating"], horizontal=True, height=520)
     st.dataframe(rt, width="stretch", height=420, hide_index=True)
