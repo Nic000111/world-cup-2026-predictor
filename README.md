@@ -57,6 +57,20 @@ Time-based splits, no peeking — train < 2022, validate 2022–23, test 2024–
 
 The cross-continental log-loss improved ~3% after shipping the confederation offset (was 0.926). The structural ceiling for results-only models on international football is around 0.86 log-loss and 60% accuracy — draws (~24% of games) are rarely the modal pick, so a hard floor of mispredicted games is unavoidable in any model.
 
+### Calibration
+
+When the model says 60%, do home teams actually win ~60% of the time? Yes — average **Expected Calibration Error is 0.019** (under 2 percentage points off) on the held-out 2024+ games. Logistic regression minimises log-loss, a proper scoring rule, so calibrated probabilities fall out by construction — no Platt/isotonic step needed.
+
+![Calibration reliability diagram](docs/calibration.png)
+
+| Outcome | ECE (held-out test) |
+|---|---|
+| Home win | 0.021 |
+| Draw | **0.015** |
+| Away win | 0.022 |
+
+The curves hug the diagonal (predicted = actual). Notably, **draws are the best-calibrated class** despite being the hardest to *pick* — calibration (are the probabilities honest?) and accuracy (is the top pick right?) are different things. The right panel shows why the model rarely picks "draw": draw probability never exceeds ~32%, so it's almost never the single most-likely outcome even when correctly assigned ~25%. Regenerate with `python scripts/calibration.py`.
+
 ### Against the sharp betting market
 
 After de-vigging bookmaker outright odds (~21% overround removed) and comparing our title probabilities to the market across all 48 teams:

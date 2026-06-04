@@ -9,6 +9,7 @@ Standalone analysis, tuning, and diagnostic scripts. Each one bootstraps the pro
 | `tune_elo.py` | Sweeps `k_base` × `home_advantage` × MoV on/off, picks the val-LL minimum. Where the current Elo defaults come from. |
 | `tune_confed.py` | Sweeps `k_confed` (confederation learning rate). The tuning that produced the cross-continental fix. |
 | `final_test.py` | Single-shot evaluation on the held-out 2024+ test set. Run this once after every methodology change to update the "shipped" numbers. |
+| `calibration.py` | Reliability diagram + ECE for the W/D/L model; writes `docs/calibration.png` (the plot in the main README). Evidence that the probabilities are honest, not a calibration fix. |
 | `group_predictions.py` | Generates the WC group-stage predictions CSV + readable text version. Saved to `~/Downloads/`. |
 | `market_comparison.py` | De-vigs bookmaker odds, runs the full Monte-Carlo, compares our title odds vs the market team-by-team and confederation-by-confederation. |
 | `diag.py` | Quick Elo sanity check — top ratings, training-row counts, label balance. |
