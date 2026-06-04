@@ -129,6 +129,11 @@ with tab1:
         m1.metric(f"{home} win", f"{g['home'] * 100:.0f}%")
         m2.metric("Draw", f"{g['draw'] * 100:.0f}%")
         m3.metric(f"{away} win", f"{g['away'] * 100:.0f}%")
+        prob = pd.DataFrame(
+            {"Goals model": [g["home"], g["draw"], g["away"]],
+             "Glicko-logistic": [r["logistic"]["home"], r["logistic"]["draw"], r["logistic"]["away"]]},
+            index=[f"{home} win", "Draw", f"{away} win"]) * 100
+        st.bar_chart(prob, horizontal=True, stack=False)
 
         dc_h, dc_a = g["home"] + g["draw"], g["away"] + g["draw"]
         st.caption(f"**Double chance** (win or draw) —  {home}: **{dc_h * 100:.0f}%**   ·   "
@@ -144,6 +149,15 @@ with tab1:
             x3.metric("Goals — O/U 2.5", f"Under {u * 100:.0f}%" if u >= .5 else f"Over {(1 - u) * 100:.0f}%",
                       help="Over / Under 2.5 total goals: whether the match more likely has 3 or more goals (Over) "
                            "or 2 or fewer (Under).")
+        M = r.get("matrix")
+        if M is not None:
+            tot = {}
+            for i in range(M.shape[0]):
+                for j in range(M.shape[1]):
+                    tot[i + j] = tot.get(i + j, 0.0) + float(M[i, j])
+            gvals = [tot.get(k, 0.0) for k in range(5)] + [sum(v for k, v in tot.items() if k >= 5)]
+            st.markdown("**Total goals in the match** — the spread behind the Over/Under")
+            st.bar_chart(pd.DataFrame({"chance %": [v * 100 for v in gvals]}, index=["0", "1", "2", "3", "4", "5+"]))
         st.caption("**Expected goals** = the average each side is forecast to score. We deliberately **don't show a "
                    "single most-likely scoreline** — the likeliest exact score is often a low draw (like 1-1) even "
                    "when one team is clearly favoured, which misleads more than it helps. The probabilities above "
