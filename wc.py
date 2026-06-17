@@ -31,25 +31,37 @@ MANUAL_RESULTS = os.path.join(_DIR, "manual_results.csv")
 MANUAL_COLS = ["date", "home_team", "away_team", "home_score", "away_score", "tournament", "city", "country", "neutral"]
 
 
-def load_results(results_path=DEFAULT_RESULTS):
-    """results.csv merged with manually-entered results. A manual result fills a matching
-    unplayed fixture if one exists (so it both updates Elo and leaves the 'upcoming' list);
-    otherwise it is appended as a brand-new match."""
+def _apply_results(df, extra):
+    """Overlay played results onto df: fill a matching UNPLAYED fixture (either home/away order,
+    flipping the score if reversed) so it updates ratings AND drops off the 'upcoming' list;
+    append as a new match if there's no matching fixture (e.g. knockout games)."""
+    extra = (extra.dropna(subset=["home_score", "away_score"])
+             .drop_duplicates(subset=["home_team", "away_team", "date"], keep="last")
+             .sort_values("date"))
+    rows = []
+    for _, m in extra.iterrows():
+        fwd = (df.home_team == m.home_team) & (df.away_team == m.away_team) & df.home_score.isna()
+        rev = (df.home_team == m.away_team) & (df.away_team == m.home_team) & df.home_score.isna()
+        if fwd.any():
+            i = df.index[fwd][0]
+            df.loc[i, "home_score"], df.loc[i, "away_score"] = m.home_score, m.away_score
+        elif rev.any():
+            i = df.index[rev][0]
+            df.loc[i, "home_score"], df.loc[i, "away_score"] = m.away_score, m.home_score   # flip
+        else:
+            rows.append(m)
+    return pd.concat([df, pd.DataFrame(rows)], ignore_index=True) if rows else df
+
+
+def load_results(results_path=DEFAULT_RESULTS, live_df=None):
+    """results.csv merged with (a) auto-synced live results from the API and (b) manually-entered
+    results. Each fills a matching unplayed fixture or is appended. Live first, manual on top
+    (so a manual entry can still override). Both are re-applied every load — nothing persisted."""
     df = pd.read_csv(results_path, parse_dates=["date"])
+    if live_df is not None and len(live_df):
+        df = _apply_results(df, live_df)
     if os.path.exists(MANUAL_RESULTS):
-        man = (pd.read_csv(MANUAL_RESULTS, parse_dates=["date"])
-               .dropna(subset=["home_score", "away_score"])
-               .drop_duplicates(subset=["home_team", "away_team", "date"], keep="last"))
-        extra = []
-        for _, m in man.iterrows():
-            hit = (df.home_team == m.home_team) & (df.away_team == m.away_team) & df.home_score.isna()
-            if hit.any():
-                i = df.index[hit][0]
-                df.loc[i, "home_score"], df.loc[i, "away_score"] = m.home_score, m.away_score
-            else:
-                extra.append(m)
-        if extra:
-            df = pd.concat([df, pd.DataFrame(extra)], ignore_index=True)
+        df = _apply_results(df, pd.read_csv(MANUAL_RESULTS, parse_dates=["date"]))
     return df.sort_values("date").reset_index(drop=True)
 
 
@@ -63,8 +75,8 @@ def record_result(home, away, home_score, away_score, date, tournament="FIFA Wor
 
 
 class WorldCupModel:
-    def __init__(self, results_path=DEFAULT_RESULTS):
-        feat, ratings = engine.build_features(load_results(results_path))
+    def __init__(self, results_path=DEFAULT_RESULTS, live_results=None):
+        feat, ratings = engine.build_features(load_results(results_path, live_df=live_results))
         self.feat = feat
         self.team_elo = dict(ratings)
         self.team_rd = dict(feat.attrs.get("final_rd", {}))          # per-team uncertainty (Glicko RD)

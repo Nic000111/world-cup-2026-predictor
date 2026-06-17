@@ -7,47 +7,69 @@ import os
 import pandas as pd
 import streamlit as st
 
+import live_results
 import wc
 
 st.set_page_config(page_title="World Cup 2026 Predictor", page_icon="⚽", layout="wide")
 
 
-# Bump CACHE_VERSION whenever the model interface changes, so cached entries invalidate on deploy.
-CACHE_VERSION = "v6-glicko"
+CACHE_VERSION = "v7-live"   # interface changed (live auto-sync). NB: the key below is a real (hashed)
+#                             argument now, so version + result changes actually invalidate the cache.
+
+
+def _token():
+    """football-data.org API token from Streamlit secrets. Empty -> auto-sync simply stays off."""
+    try:
+        return st.secrets.get("FOOTBALL_DATA_TOKEN", "")
+    except Exception:
+        return ""
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def live_sync(v=CACHE_VERSION):
+    """Finished World Cup results from football-data.org, re-checked at most every ~5 minutes.
+    Stateless: re-fetched each time, so results survive the cloud's sleep/wake (nothing to lose)."""
+    df = live_results.fetch_wc_results(_token())
+    tot = int(df[["home_score", "away_score"]].to_numpy().sum()) if len(df) else 0
+    return df, f"{len(df)}-{tot}"          # signature changes whenever a new result lands
+
+
+LIVE_DF, _LIVE_SIG = live_sync()
+CKEY = f"{CACHE_VERSION}|live:{_LIVE_SIG}"   # hashed cache key for everything below; moves when results do
 
 
 @st.cache_resource
-def load_model(_v=CACHE_VERSION):
-    return wc.WorldCupModel()
+def load_model(v=CKEY):
+    return wc.WorldCupModel(live_results=LIVE_DF)
 
 
 @st.cache_data
-def fixtures(_v=CACHE_VERSION):
+def fixtures(v=CKEY):
     return load_model().group_fixtures()
 
 
 @st.cache_data
-def ratings(_v=CACHE_VERSION):
+def ratings(v=CKEY):
     return load_model().ratings_table()
 
 
 @st.cache_data
-def run_sim(rd_scale, _v=CACHE_VERSION):
+def run_sim(rd_scale, v=CKEY):
     return load_model().simulate_tournament(n_sim=20000, rd_scale=rd_scale)
 
 
 @st.cache_data
-def bracket(_v=CACHE_VERSION):
+def bracket(v=CKEY):
     return load_model().project_bracket()
 
 
 @st.cache_data
-def group_map(_v=CACHE_VERSION):
+def group_map(v=CKEY):
     return load_model().groups()
 
 
 @st.cache_data
-def data_through(_v=CACHE_VERSION):
+def data_through(v=CKEY):
     d = load_model().data_through()
     return pd.Timestamp(d).strftime("%d %b %Y") if d is not None else "—"
 
@@ -119,6 +141,13 @@ with st.expander("How it works (the model in detail)"):
         "2022–23 and validated on a held-out 2024–25 test set; the deployed model is refit on every game played "
         "through today. The **📈 How good is it?** tab has the held-out accuracy and an honest list of what it can and "
         "can't do.")
+
+if _token():
+    st.success(f"🟢 **Live results auto-sync is on** — {len(LIVE_DF)} World Cup match"
+               f"{'' if len(LIVE_DF) == 1 else 'es'} pulled from football-data.org so far. "
+               "Scores update themselves as games finish (re-checked every few minutes); no manual entry needed.")
+else:
+    st.info("⚪ Live auto-sync is off (no API key configured) — using the stored data plus any manual entries.")
 
 tab_predict, tab_good, tab_groups, tab_ratings, tab_odds, tab_bracket, tab_enter = st.tabs(
     ["🔮 Predict a match", "📈 How good is it?", "📋 Groups", "📊 Ratings", "🏆 Title odds", "🗺️ Bracket",
@@ -422,9 +451,11 @@ with tab_bracket:
 with tab_enter:
     if st.session_state.get("saved_msg"):
         st.success(st.session_state.pop("saved_msg"))
-    st.subheader("➕ Enter a result — the ratings absorb it and every prediction updates")
-    st.caption("As games are played, record the score here. Pick an upcoming fixture (names guaranteed "
-               "to match), or a custom match for anything else.")
+    st.subheader("➕ Enter a result — manual override")
+    st.caption("World Cup scores now **sync automatically** from football-data.org, so you normally don't need this. "
+               "Use it only to **correct** a result or add a non-WC game. ⚠️ Note: manual entries are stored on the "
+               "cloud's temporary disk and are **wiped when the app sleeps/restarts** — the auto-synced WC results, by "
+               "contrast, always reload themselves, so prefer letting those flow in.")
     # Password gate (active only when ENTER_PWD is set as a Streamlit secret — i.e. on the deployed app).
     # Locally with no secrets.toml, the gate is bypassed automatically.
     # CRITICAL: gate ONLY this tab — do NOT call st.stop(), which would halt the whole script.
@@ -483,4 +514,5 @@ with tab_enter:
 
 st.divider()
 st.caption(f"⚠️ A model, not a crystal ball: ~40% of matches (draws + upsets) are near-random, so these are honest "
-           f"*probabilities*, not certainties.   ·   data through **{data_through()}**   ·   build `{CACHE_VERSION}`")
+           f"*probabilities*, not certainties.   ·   data through **{data_through()}**   ·   "
+           f"{len(LIVE_DF)} live results synced   ·   build `{CKEY}`")
