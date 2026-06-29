@@ -49,6 +49,11 @@ def fixtures(v=CKEY):
 
 
 @st.cache_data
+def full_groups(v=CKEY):
+    return load_model().group_results()
+
+
+@st.cache_data
 def ratings(v=CKEY):
     return load_model().ratings_table()
 
@@ -335,37 +340,55 @@ with tab_groups:
         st.info("Standings need the tournament simulation — give it a moment, or open the **Title odds** tab once.")
 
     st.divider()
-    st.markdown("#### Fixtures")
-    st.caption("Each fixture's **prediction** (*Lean* = a near-toss-up), the **chances** (home / draw / away %), "
-               "**expected goals**, the **Over/Under 2.5** market, and the favourite's **double chance**. Played games "
-               "drop off as you enter results.")
+    st.markdown("#### Fixtures & results")
+    st.caption("Played games show the **actual result**; upcoming games show the **forecast** (prediction, chances, "
+               "expected goals, Over/Under 2.5, double chance). Updates automatically as scores come in.")
     with st.expander("ℹ️ What the columns mean"):
-        st.markdown(COLUMN_LEGEND)
+        st.markdown(COLUMN_LEGEND + "\n- **result** — the final score (home–away) once a game is played; blank "
+                    "beforehand. The forecast columns are blank for played games — a forecast only applies before "
+                    "kickoff, so showing one afterward would be hindsight.")
     q = st.text_input("🔎 Filter by team", key="grp_filter").strip().lower()
-    gf = fixtures().copy()
-    if len(gf) == 0:
-        st.info("All group fixtures have been played (entered as results). 🎉")
-    elif "under25" not in gf.columns:
-        st.warning("This forecast was cached by an older build. **Reboot the app** (Manage app ▸ ⋮ ▸ Reboot) to "
-                   "refresh it.")
+    gr = full_groups().copy()
+    if len(gr) == 0:
+        st.info("No group fixtures found.")
     else:
-        gf["group"] = gf.home.map(team2grp)
-        gf["prediction"] = [outcome_label(r.home, r.away, {"home": r.home_win, "draw": r.draw, "away": r.away_win})
-                            for r in gf.itertuples()]
-        gf["home / draw / away %"] = gf.apply(
-            lambda r: f"{r.home_win * 100:.0f} / {r.draw * 100:.0f} / {r.away_win * 100:.0f}", axis=1)
-        gf["xG"] = gf.xg_home.round(1).astype(str) + " – " + gf.xg_away.round(1).astype(str)
-        gf["O/U 2.5"] = gf.under25.apply(lambda u: f"Under {u * 100:.0f}%" if u >= .5 else f"Over {(1 - u) * 100:.0f}%")
+        for c in ["home_win", "draw", "away_win", "xg_home", "xg_away", "under25"]:
+            if c not in gr.columns:
+                gr[c] = pd.NA
+        gr["group"] = gr.home.map(team2grp)
+        D = "—"
 
-        def _dchance(r):
+        def _pred(r):
+            return D if r.played else outcome_label(r.home, r.away,
+                                                    {"home": r.home_win, "draw": r.draw, "away": r.away_win})
+
+        def _wdl(r):
+            return D if r.played else f"{r.home_win * 100:.0f} / {r.draw * 100:.0f} / {r.away_win * 100:.0f}"
+
+        def _xg(r):
+            return D if r.played else f"{r.xg_home:.1f} – {r.xg_away:.1f}"
+
+        def _ou(r):
+            return D if r.played else (f"Under {r.under25 * 100:.0f}%" if r.under25 >= .5
+                                       else f"Over {(1 - r.under25) * 100:.0f}%")
+
+        def _dc(r):
+            if r.played:
+                return D
             fav, p = (r.home, r.home_win) if r.home_win >= r.away_win else (r.away, r.away_win)
             return f"{fav} or draw {(p + r.draw) * 100:.0f}%"
-        gf["double chance"] = [_dchance(r) for r in gf.itertuples()]
-        gf = gf.sort_values(["group", "date"], na_position="last")
+
+        gr["result"] = gr["result"].fillna(D)
+        gr["prediction"] = [_pred(r) for r in gr.itertuples()]
+        gr["home / draw / away %"] = [_wdl(r) for r in gr.itertuples()]
+        gr["xG"] = [_xg(r) for r in gr.itertuples()]
+        gr["O/U 2.5"] = [_ou(r) for r in gr.itertuples()]
+        gr["double chance"] = [_dc(r) for r in gr.itertuples()]
+        gr = gr.sort_values(["group", "date"], na_position="last")
         if q:
-            gf = gf[gf.home.str.lower().str.contains(q, regex=False) | gf.away.str.lower().str.contains(q, regex=False)]
-        st.dataframe(gf[["group", "date", "home", "away", "prediction", "home / draw / away %", "xG", "O/U 2.5",
-                         "double chance"]], width="stretch", height=520, hide_index=True)
+            gr = gr[gr.home.str.lower().str.contains(q, regex=False) | gr.away.str.lower().str.contains(q, regex=False)]
+        st.dataframe(gr[["group", "date", "home", "away", "result", "prediction", "home / draw / away %", "xG",
+                         "O/U 2.5", "double chance"]], width="stretch", height=560, hide_index=True)
 
 # ───────────────────────── Ratings ─────────────────────────
 with tab_ratings:

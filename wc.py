@@ -157,8 +157,24 @@ class WorldCupModel:
                 "markets": {"under25": under25, "btts_yes": btts_yes},
                 "likely_score": f"{si}-{sj}", "top_scores": top, "matrix": M}
 
+    def _group_games(self):
+        """The 2026 group-stage rows of feat, identified by matchup against the static schedule in
+        results.csv. Excludes appended knockout games — they'd corrupt the who-played-whom group
+        detection (a knockout tie links two different groups) once the knockouts begin."""
+        base = pd.read_csv(DEFAULT_RESULTS, parse_dates=["date"])
+        g = base[(base.tournament == "FIFA World Cup") & (base.date.dt.year == 2026)]
+        keys = set(zip(g.home_team, g.away_team))
+        wc = self.feat[(self.feat.tournament == "FIFA World Cup") & (self.feat.date.dt.year == 2026)]
+        return wc[[(h, a) in keys for h, a in zip(wc.home_team, wc.away_team)]]
+
+    GF_COLS = ["date", "home", "away", "home_win", "draw", "away_win", "xg_home", "xg_away",
+               "under25", "btts_yes", "likely_score"]
+
     def group_fixtures(self):
-        wc = self.feat[(self.feat.tournament == "FIFA World Cup") & (self.feat.date.dt.year == 2026) & self.feat.result.isna()]
+        """Upcoming (unplayed) group fixtures with their forecast. Empty (with columns) once the
+        group stage is complete — so callers never hit an empty-frame KeyError."""
+        wc = self._group_games()
+        wc = wc[wc.result.isna()]
         rows = []
         for _, r in wc.iterrows():
             p = self.predict_match(r.home_team, r.away_team, neutral=bool(r.neutral))
@@ -167,7 +183,19 @@ class WorldCupModel:
                              xg_home=p["xg"][0], xg_away=p["xg"][1],
                              under25=p["markets"]["under25"], btts_yes=p["markets"]["btts_yes"],
                              likely_score=p["likely_score"]))
-        return pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
+        if not rows:
+            return pd.DataFrame(columns=self.GF_COLS)
+        return pd.DataFrame(rows)[self.GF_COLS].sort_values("date").reset_index(drop=True)
+
+    def group_results(self):
+        """All 2026 group games for display: played ones show the actual score, upcoming ones the
+        forecast. Lets the dashboard show results as they land instead of games just disappearing."""
+        played = pd.DataFrame([
+            dict(date=r.date.strftime("%Y-%m-%d"), home=r.home_team, away=r.away_team,
+                 played=True, result=f"{int(r.home_score)}–{int(r.away_score)}")
+            for _, r in self._group_games().sort_values("date").iterrows() if pd.notna(r.home_score)])
+        up = self.group_fixtures().assign(played=False, result=pd.NA)
+        return pd.concat([played, up], ignore_index=True)
 
     def ratings_table(self):
         rd0 = engine.DEFAULT_PARAMS["rd_init"]
@@ -202,7 +230,7 @@ class WorldCupModel:
             z = cf[0] * (se - mu[0]) / sg[0] + cf[1] * (oe - mu[1]) / sg[1] + cf[2] * (ih - mu[2]) / sg[2] + cf[3] * (0.0 - mu[3]) / sg[3]
             return np.exp(b0 + z)
 
-        wc = self.feat[(self.feat.tournament == "FIFA World Cup") & (self.feat.date.dt.year == 2026)]  # all 72 group fixtures (played or not)
+        wc = self._group_games()  # the 72 group fixtures (played or not); excludes knockout games
         teams = sorted(set(wc.home_team) | set(wc.away_team)); ti = {t: i for i, t in enumerate(teams)}
         base = np.array([self.team_elo[t] for t in teams])
         rd0 = engine.DEFAULT_PARAMS["rd_init"]
@@ -289,7 +317,7 @@ class WorldCupModel:
         """Single most-likely knockout bracket from current ratings + entered results.
         Group order = projected points (actual where played, else expected); knockouts: favourite advances.
         Returns {R32,R16,QF,SF: [(a,b,winner,p)...], final:(a,b,w,p), third:(...), champion:(team,p)}."""
-        wc = self.feat[(self.feat.tournament == "FIFA World Cup") & (self.feat.date.dt.year == 2026)]
+        wc = self._group_games()
         teams = sorted(set(wc.home_team) | set(wc.away_team))
         adj = defaultdict(set)
         for _, r in wc.iterrows():
@@ -349,7 +377,7 @@ class WorldCupModel:
 
     def groups(self):
         """{group letter: [team names]} for the 2026 group stage (derived from fixtures + seeded anchors)."""
-        wc = self.feat[(self.feat.tournament == "FIFA World Cup") & (self.feat.date.dt.year == 2026)]
+        wc = self._group_games()
         teams = sorted(set(wc.home_team) | set(wc.away_team))
         adj = defaultdict(set)
         for _, r in wc.iterrows():
