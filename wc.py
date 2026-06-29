@@ -167,6 +167,27 @@ class WorldCupModel:
         wc = self.feat[(self.feat.tournament == "FIFA World Cup") & (self.feat.date.dt.year == 2026)]
         return wc[[(h, a) in keys for h, a in zip(wc.home_team, wc.away_team)]]
 
+    def _ko_results(self):
+        """{frozenset({teamA, teamB}): advancing_team} for knockout ties already played. Uses the API
+        'winner' (so penalty shootouts resolve correctly); falls back to the higher scorer."""
+        if "winner" not in self.feat.columns:
+            return {}
+        base = pd.read_csv(DEFAULT_RESULTS, parse_dates=["date"])
+        g = base[(base.tournament == "FIFA World Cup") & (base.date.dt.year == 2026)]
+        group_keys = set(zip(g.home_team, g.away_team))
+        wc = self.feat[(self.feat.tournament == "FIFA World Cup") & (self.feat.date.dt.year == 2026)
+                       & self.feat.home_score.notna()]
+        ko = {}
+        for r in wc.itertuples():
+            if (r.home_team, r.away_team) in group_keys:
+                continue                                    # group game, not a knockout tie
+            w = r.winner if pd.notna(r.winner) else (
+                r.home_team if r.home_score > r.away_score else
+                r.away_team if r.away_score > r.home_score else None)
+            if w:
+                ko[frozenset((r.home_team, r.away_team))] = w
+        return ko
+
     GF_COLS = ["date", "home", "away", "home_win", "draw", "away_win", "xg_home", "xg_away",
                "under25", "btts_yes", "likely_score"]
 
@@ -232,6 +253,8 @@ class WorldCupModel:
 
         wc = self._group_games()  # the 72 group fixtures (played or not); excludes knockout games
         teams = sorted(set(wc.home_team) | set(wc.away_team)); ti = {t: i for i, t in enumerate(teams)}
+        ko_idx = {frozenset(ti[t] for t in pair): ti[w]                       # played knockout ties (as indices)
+                  for pair, w in self._ko_results().items() if w in ti and all(t in ti for t in pair)}
         base = np.array([self.team_elo[t] for t in teams])
         rd0 = engine.DEFAULT_PARAMS["rd_init"]
         sd = np.array([self.team_rd.get(t, rd0) for t in teams]) * rd_scale   # per-team uncertainty
@@ -300,14 +323,18 @@ class WorldCupModel:
             win = {}; k = 0
             for m, (c1, c2) in R32.items():
                 t1, t2 = team_of(c1), team_of(c2)
-                win[m] = t1 if KO[s, k] < np.interp(ps[t1] - ps[t2], gaps, adv_tab) else t2; k += 1
+                lk = ko_idx.get(frozenset((t1, t2)))
+                win[m] = lk if lk is not None else (t1 if KO[s, k] < np.interp(ps[t1] - ps[t2], gaps, adv_tab) else t2)
+                k += 1
             for stage, nxt in [(R16, "reach_QF"), (QF, "reach_SF"), (SF, "final")]:
                 for m, (x, y) in stage.items():
                     t1, t2 = win[x], win[y]
-                    win[m] = t1 if KO[s, k] < np.interp(ps[t1] - ps[t2], gaps, adv_tab) else t2
+                    lk = ko_idx.get(frozenset((t1, t2)))
+                    win[m] = lk if lk is not None else (t1 if KO[s, k] < np.interp(ps[t1] - ps[t2], gaps, adv_tab) else t2)
                     reach[nxt][win[m]] += 1; k += 1
             t1, t2 = win[101], win[102]
-            reach["champion"][t1 if KO[s, k] < np.interp(ps[t1] - ps[t2], gaps, adv_tab) else t2] += 1
+            lk = ko_idx.get(frozenset((t1, t2)))
+            reach["champion"][lk if lk is not None else (t1 if KO[s, k] < np.interp(ps[t1] - ps[t2], gaps, adv_tab) else t2)] += 1
         out = pd.DataFrame({"team": teams, "rating": base.round().astype(int)})
         for kk in reach:
             out[kk] = reach[kk] / n_sim
@@ -355,7 +382,11 @@ class WorldCupModel:
         bt(0); tmap = {sid: dict(thirds)[g] for sid, g in asn.items()}
         def slot(c):
             return pos[c[1]][0] if c[0] == "1" else pos[c[1]][1] if c[0] == "2" else tmap[c]
+        ko = self._ko_results()
         def winner(a, b):
+            lk = ko.get(frozenset((a, b)))
+            if lk:
+                return (lk, 1.0)                            # tie already played -> real winner, locked in
             g = self.predict_match(a, b, neutral=True)["goals"]; h, aw = g["home"], g["away"]
             pa = h + (1 - h - aw) * (h / (h + aw)) if (h + aw) > 0 else 0.5
             return (a, pa) if pa >= 0.5 else (b, 1 - pa)

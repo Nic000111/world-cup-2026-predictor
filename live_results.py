@@ -53,13 +53,17 @@ def fetch_wc_results(token, timeout=15):
         a = (m.get("awayTeam") or {}).get("name")
         if hs is None or as_ is None or not h or not a:
             continue
+        hm, am = NAME_MAP.get(h, h), NAME_MAP.get(a, a)
+        w = (m.get("score") or {}).get("winner")        # who advanced (handles penalty shootouts)
+        winner = hm if w == "HOME_TEAM" else (am if w == "AWAY_TEAM" else None)
         rows.append({
             "date": pd.Timestamp(m["utcDate"][:10]),
-            "home_team": NAME_MAP.get(h, h),
-            "away_team": NAME_MAP.get(a, a),
+            "home_team": hm,
+            "away_team": am,
             "home_score": int(hs),
             "away_score": int(as_),
             "tournament": "FIFA World Cup",
             "city": "", "country": "", "neutral": True,
+            "winner": winner,
         })
     return pd.DataFrame(rows)
